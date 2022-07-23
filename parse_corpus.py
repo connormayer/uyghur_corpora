@@ -1,6 +1,7 @@
 import apertium
 import argparse
 import hfst
+import io
 import pandas as pd
 import os
 import re
@@ -9,8 +10,8 @@ import time
 from zipfile import ZipFile
 
 METADATA_FILENAME = 'metadata.csv'
-DOCS_DIR = 'pa_documents'
-LAT_DOCS_DIR = 'lat_documents'
+DOCS_ZIP = 'pa_documents.zip'
+LAT_DOCS_ZIP = 'lat_documents.zip'
 DISCARD_FILE = 'discarded.csv'
 MULTIPARSE_FILE = 'multiparse_parses.csv'
 CONSERVATIVE_FILE = 'conservative_parses.csv'
@@ -60,7 +61,6 @@ def load_transducer(fst_path):
 	"""
 	Loads the orthographic fst we use to convert Perso-Arabic to Latin
 	"""
-
 	istr = hfst.HfstInputStream(fst_path)
 	transducer = istr.read_all()[0]
 	transducer.lookup_optimize()
@@ -296,23 +296,27 @@ def parse_corpus(corpus_dir, latin_input, resume):
 
 	metadata = pd.read_csv(os.path.join(corpus_dir, METADATA_FILENAME))
 
-	# parser = load_transducer(MAIN_FST_PATH)
+	parser = load_transducer(MAIN_FST_PATH)
 
-	# if latin_input:
-	# 	lat_transducer = load_transducer(LATIN_FST_PATH)
+	if latin_input:
+		lat_transducer = load_transducer(LATIN_FST_PATH)
 
-	# ortho_transducer = load_transducer(ORTHO_FST_PATH)
+	ortho_transducer = load_transducer(ORTHO_FST_PATH)
 
 	total_words = 0
 	failed_words = 0
 
+	if not latin_input:
+		zip_file = os.path.join(corpus_dir, DOCS_ZIP)
+	else:
+		zip_file = os.path.join(corpus_dir, LAT_DOCS_ZIP)
+
 	with open(os.path.join(corpus_dir, OUTPUT_DIR, DISCARD_FILE), 'a') as discard_f, \
 		 open(os.path.join(corpus_dir, OUTPUT_DIR, MULTIPARSE_FILE), 'a') as mp_f, \
-		 open(os.path.join(corpus_dir, OUTPUT_DIR, CONSERVATIVE_FILE), 'a') as conservative_f:
+		 open(os.path.join(corpus_dir, OUTPUT_DIR, CONSERVATIVE_FILE), 'a') as conservative_f, \
+		 ZipFile(zip_file) as corpus_zip:
 
 		for index, row in metadata.iterrows():
-			if index == 0:
-				break
 			print("Processing article {} of {}".format(index, len(metadata)))
 			if resume and not found_start:
 				if row['filename'] == last_processed:
@@ -326,13 +330,8 @@ def parse_corpus(corpus_dir, latin_input, resume):
 				last_processed_f.write(row['filename'])
 
 			# Load data for a single article
-			if not latin_input:
-				doc_file = os.path.join(corpus_dir, DOCS_DIR, row['filename'])
-			else:
-				doc_file = os.path.join(corpus_dir, LAT_DOCS_DIR, row['filename'])
-
-			with open(doc_file) as f:
-				document = f.read()
+			doc_file = corpus_zip.open(os.path.split(zip_file)[1].split('.')[0] + '/' + row['filename'])
+			document = io.TextIOWrapper(doc_file, 'utf-8').read()
 			
 			clean_doc = clean_document(document)
 			if latin_input:
@@ -365,21 +364,19 @@ def parse_corpus(corpus_dir, latin_input, resume):
 	print("Total words: {}".format(total_words))
 	print("Failed words: {}".format(failed_words))
 
-	with ZipFile(os.path.join(
-			corpus_dir, OUTPUT_DIR, DISCARD_FILE.split('.')[0] + '.zip'), 'w') as my_zip:
-		my_zip.write(os.path.join(corpus_dir, OUTPUT_DIR, DISCARD_FILE))
+	with ZipFile(os.path.join(corpus_dir, OUTPUT_DIR, DISCARD_FILE.split('.')[0] + '.zip'), 'w') as my_zip:
+		my_zip.write(os.path.join(corpus_dir, OUTPUT_DIR, DISCARD_FILE), arcname=DISCARD_FILE)
 
 	os.remove(os.path.join(corpus_dir, OUTPUT_DIR, DISCARD_FILE))
 
-	with ZipFile(os.path.join(
-			corpus_dir, OUTPUT_DIR, CONSERVATIVE_FILE.split('.')[0] + '.zip'), 'w') as my_zip:
-		my_zip.write(os.path.join(corpus_dir, OUTPUT_DIR, CONSERVATIVE_FILE))
+	with ZipFile(os.path.join(corpus_dir, OUTPUT_DIR, CONSERVATIVE_FILE.split('.')[0] + '.zip'), 'w') as my_zip:
+		my_zip.write(os.path.join(corpus_dir, OUTPUT_DIR, CONSERVATIVE_FILE), arcname=CONSERVATIVE_FILE)
 
 	os.remove(os.path.join(corpus_dir, OUTPUT_DIR, CONSERVATIVE_FILE))
 
 	with ZipFile(os.path.join(
 			corpus_dir, OUTPUT_DIR, MULTIPARSE_FILE.split('.')[0] + '.zip'), 'w') as my_zip:
-		my_zip.write(os.path.join(corpus_dir, OUTPUT_DIR, MULTIPARSE_FILE))
+		my_zip.write(os.path.join(corpus_dir, OUTPUT_DIR, MULTIPARSE_FILE), arcname=MULTIPARSE_FILE)
 
 	os.remove(os.path.join(corpus_dir, OUTPUT_DIR, MULTIPARSE_FILE))
 
