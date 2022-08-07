@@ -16,10 +16,12 @@ DISCARD_FILE = 'discarded.csv'
 MULTIPARSE_FILE = 'multiparse_parses.csv'
 CONSERVATIVE_FILE = 'conservative_parses.csv'
 OUTPUT_DIR = 'output'
-ORTHO_FST_PATH = "/mnt/e/apertium-uig/dev/ortho/ara-lat.hfst"
-LATIN_FST_PATH = "/mnt/e/apertium-uig/dev/ortho/lat-ara-test.hfst"
-MAIN_FST_PATH = "/mnt/e/apertium-uig/uig.automorf.hfst"
+FST_DIR = "/mnt/e/apertium-uig"
+ORTHO_FST_PATH = "dev/ortho/ara-lat.hfst"
+LATIN_FST_PATH = "dev/ortho/lat-ara-test.hfst"
+MAIN_FST_PATH = "uig.automorf.hfst"
 LAST_PROCESSED = 'last_processed.txt'
+PRINT_EVERY = 100
 
 VOWELS = ['a', 'e', 'i', 'o', 'u', 'ö', 'ü', 'é']
 
@@ -60,7 +62,7 @@ def clean_document(doc):
 def load_transducer(fst_path):
 	"""
 	Loads the orthographic fst we use to convert Perso-Arabic to Latin
-	"""
+	""" 
 	istr = hfst.HfstInputStream(fst_path)
 	transducer = istr.read_all()[0]
 	transducer.lookup_optimize()
@@ -232,12 +234,16 @@ def initialize_files(corpus_dir):
 	"""
 	Initializes output files by clearing them and writing heads
 	"""
-	open(os.path.join(corpus_dir, OUTPUT_DIR, DISCARD_FILE), 'w').close()
+	output_path = os.path.join(corpus_dir, OUTPUT_DIR)
+	if not os.path.isdir(output_path):
+		os.mkdir(output_path)
 
-	with open(os.path.join(corpus_dir, OUTPUT_DIR, MULTIPARSE_FILE), 'w') as f:
+	open(os.path.join(output_path, DISCARD_FILE), 'w').close()
+
+	with open(os.path.join(output_path, MULTIPARSE_FILE), 'w') as f:
 		f.write(','.join(COLNAMES) + '\n')
 
-	with open(os.path.join(corpus_dir, OUTPUT_DIR, CONSERVATIVE_FILE), 'w') as f:
+	with open(os.path.join(output_path, CONSERVATIVE_FILE), 'w') as f:
 		f.write(','.join(COLNAMES) + '\n')
 
 def remove_raised_root(readings, ortho_transducer):
@@ -286,7 +292,7 @@ def get_latin_parse(lat_transducer, x):
 	else:
 		return ''
 
-def parse_corpus(corpus_dir, latin_input, resume):
+def parse_corpus(corpus_dir, latin_input, resume, fst_dir, print_every):
 	if not resume:
 		initialize_files(corpus_dir)
 	else:
@@ -296,12 +302,16 @@ def parse_corpus(corpus_dir, latin_input, resume):
 
 	metadata = pd.read_csv(os.path.join(corpus_dir, METADATA_FILENAME))
 
-	parser = load_transducer(MAIN_FST_PATH)
+	parser = load_transducer(os.path.join(fst_dir, MAIN_FST_PATH))
 
 	if latin_input:
-		lat_transducer = load_transducer(LATIN_FST_PATH)
+		lat_transducer = load_transducer(
+			os.path.join(fst_dir, LATIN_FST_PATH)
+		)
 
-	ortho_transducer = load_transducer(ORTHO_FST_PATH)
+	ortho_transducer = load_transducer(
+		os.path.join(fst_dir, ORTHO_FST_PATH)
+	)
 
 	total_words = 0
 	failed_words = 0
@@ -317,15 +327,16 @@ def parse_corpus(corpus_dir, latin_input, resume):
 		 ZipFile(zip_file) as corpus_zip:
 
 		for index, row in metadata.iterrows():
-			print("Processing article {} of {}".format(index, len(metadata)))
 			if resume and not found_start:
 				if row['filename'] == last_processed:
 					found_start = True
 				else:
 					print("{} already processed, skipping".format(row['filename']))
 					continue
-
-			print("Processing {}".format(row['filename']))
+			if index % print_every == 0:
+				print("Processing article {} of {}: {}".format(
+					index, len(metadata), row['filename'])
+				)
 			with open(os.path.join(corpus_dir, OUTPUT_DIR, LAST_PROCESSED), 'w') as last_processed_f:
 				last_processed_f.write(row['filename'])
 
@@ -393,7 +404,18 @@ if __name__ == "__main__":
 	parser.add_argument(
 		'--resume', action='store_true'
 	)
+	parser.add_argument(
+		'--fst_dir', type=str, default=FST_DIR,
+		help='The path to the root directory of the FST'
+	)
+	parser.add_argument(
+		'--print_every', type=int, default=PRINT_EVERY,
+		help="Print status every n files."
+	)
 	args = parser.parse_args()
-	results = parse_corpus(args.corpus_dir, args.latin_input, args.resume)
+	results = parse_corpus(
+		args.corpus_dir, args.latin_input, args.resume, args.fst_dir,
+		args.print_every
+	)
 
 
