@@ -45,8 +45,9 @@ BIGRAM_CONS_RE = "ng|sh|gh|zh|ch"
 VOWELS_RE = "a|e|i|o|u|é|ü|ö"
 
 COLNAMES = [
-	'root', 'word', 'tags', 'count', 'back_count', 'front_count', 'raising_candidate', 
-	'raised', 'detailed_template', 'template', 'fine_template', 'last_two'
+	'root', 'word', 'tags', 'author', 'count', 'back_count', 'front_count', 'raising_candidate', 
+	'raised', 'detailed_template', 'template', 'fine_template', 'last_two', 'last_two_distance',
+	'root_suffix_distance'
 ]
 
 def clean_document(doc):
@@ -67,6 +68,9 @@ def load_transducer(fst_path):
 	return transducer
 
 def get_backness_counts(tags):
+	"""
+	Gets counts of front/back suffix forms
+	"""
 	back_count = 0
 	front_count = 0
 
@@ -188,7 +192,47 @@ def is_raised(root, word):
 
 	return i_version in word or e_version in word
 
-def write_parses(word, readings, f, ortho_transducer):
+def get_last_two_harmonizer_distance(detailed_template):
+	"""
+	Get the distance in segments between the final two harmonizing vowels
+	Returns -1 if there's only a single harmonizer
+	"""
+	harmonizer_idxs = list(re.finditer('F|B', detailed_template))
+	if len(harmonizer_idxs) < 2:
+		return -1
+
+	return harmonizer_idxs[-1].end() - harmonizer_idxs[-2].end()
+
+def get_root_harm_tag_distance(tags):
+	"""
+	Gets the distance in tags from the root to the first
+	harmonizing tag.
+
+	Returns -1 if there's no harmonizing tag
+	"""
+	tag_list = tags.split('_')
+	# Some roots correspond to multiple tags, we don't want
+	# to count these
+	if len(tag_list) > 1:
+		if tag_list[0] == 'n' and tag_list[1] != 'لىق':
+			start = 1
+		elif tag_list[0] == 'adj' and tag_list[1] != 'subst':
+			start = 1
+		elif tag_list[0] == 'adv':
+			start = 1
+		else:
+			start = 2
+	else:
+		return -1
+
+	try:
+		end = list(('-b' in tag or '-f' in tag) for tag in tag_list).index(True)
+	except:
+		return -1
+
+	return end - start
+
+def write_parses(word, readings, f, ortho_transducer, author):
 	"""
 	Calculates features and writes parses to file
 	"""
@@ -220,17 +264,20 @@ def write_parses(word, readings, f, ortho_transducer):
 		back_count /= num_parses
 		front_count /= num_parses
 		last_two = fine_template[-2:]
+		last_two_harmonizer_distance = get_last_two_harmonizer_distance(detailed_template)
+		intervening_suffix_count = get_root_harm_tag_distance(tags)
 
 		vals = map(str, [
-			latin_root, latin_word, tags, count, back_count, front_count, 
-			raising_candidate, raised, detailed_template, template, fine_template, last_two
+			latin_root, latin_word, tags, author, count, back_count, front_count, 
+			raising_candidate, raised, detailed_template, template, fine_template, last_two,
+			last_two_harmonizer_distance, intervening_suffix_count
 		])
 
 		f.write(','.join(vals) + '\n')
 
 def initialize_files(corpus_dir):
 	"""
-	Initializes output files by clearing them and writing heads
+	Initializes output files by clearing them and writing headers
 	"""
 	open(os.path.join(corpus_dir, OUTPUT_DIR, DISCARD_FILE), 'w').close()
 
@@ -305,6 +352,8 @@ def parse_corpus(corpus_dir, latin_input, resume):
 
 	total_words = 0
 	failed_words = 0
+	multiparse_words = 0
+	single_parse_words = 0
 
 	if not latin_input:
 		zip_file = os.path.join(corpus_dir, DOCS_ZIP)
@@ -329,6 +378,17 @@ def parse_corpus(corpus_dir, latin_input, resume):
 			with open(os.path.join(corpus_dir, OUTPUT_DIR, LAST_PROCESSED), 'w') as last_processed_f:
 				last_processed_f.write(row['filename'])
 
+			author_latin = 'None_{}'.format(os.path.split(corpus_dir)[-1])
+
+			if not latin_input:
+				try:
+					author_latin = ' '.join([ortho_transducer.lookup(part)[1][0] for part in row.author.split(' ')])
+				except:
+					pass
+			else:
+				if not pd.isna(row.author):
+					author_latin = row.author
+
 			# Load data for a single article
 			doc_file = corpus_zip.open(os.path.split(zip_file)[1].split('.')[0] + '/' + row['filename'])
 			document = io.TextIOWrapper(doc_file, 'utf-8').read()
@@ -341,7 +401,6 @@ def parse_corpus(corpus_dir, latin_input, resume):
 
 			for word, readings in word_parses.items():
 				total_words += 1
-
 				if not readings:
 					# Can't be parsed
 					failed_words += 1
@@ -356,13 +415,17 @@ def parse_corpus(corpus_dir, latin_input, resume):
 					# as 'talla + sh + qan' or 'tallash + qan'. We make a maximally conservative 
 					# output by discarding EVERY parse with more than one root, and a less
 					# conservative one by keeping them but weighting them by their probability.
-					write_parses(word, readings, mp_f, ortho_transducer)
+					write_parses(word, readings, mp_f, ortho_transducer, author_latin)
+					multiparse_words += 1
 				else:
 					# One parse
-					write_parses(word, readings, conservative_f, ortho_transducer)
+					write_parses(word, readings, conservative_f, ortho_transducer, author_latin)
+					single_parse_words += 1
 
 	print("Total words: {}".format(total_words))
 	print("Failed words: {}".format(failed_words))
+	print("Multiparse words: {}".format(multiparse_words))
+	print("Single parse words: {}".format(single_parse_words))
 
 	with ZipFile(os.path.join(corpus_dir, OUTPUT_DIR, DISCARD_FILE.split('.')[0] + '.zip'), 'w') as my_zip:
 		my_zip.write(os.path.join(corpus_dir, OUTPUT_DIR, DISCARD_FILE), arcname=DISCARD_FILE)
