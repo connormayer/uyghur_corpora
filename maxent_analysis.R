@@ -1,23 +1,25 @@
 require(tidyverse)
+require(archive)
 
 # Load in our data. If you want to run this script yourself, you'll need
 # to set the working directory to wherever you've checked out the corpora
-setwd("E:/git_repos/uyghur_corpora")
+# setwd("E:/git_repos/uyghur_corpora")
+setwd("//wsl.localhost/Ubuntu/home/connor/uyghur_corpora")
 
 input_file <- archive_read('corpora/raising_candidates.zip')
 raising_candidates <- read_csv(input_file, col_types = cols())
 
 # Train a logistic regression model to predict backness class
-full_model <- glmer(
-    back_count ~ log_norm_count + raised_form_prop + last_two + last_two_distance + has_name + has_ane + has_che + (1|root),
-    data=raising_candidates,
-    family="binomial"#,
-    # The bobyqa optimizer has more luck converging than the default Nelder_Mead
-    #control=glmerControl(optimizer = 'bobyqa')
-  )
+# full_model <- glmer(
+#     back_count ~ log_norm_count + raised_form_prop + last_two + last_two_distance + has_name + has_ane + has_che + (1|root),
+#     data=raising_candidates,
+#     family="binomial"#,
+#     # The bobyqa optimizer has more luck converging than the default Nelder_Mead
+#     #control=glmerControl(optimizer = 'bobyqa')
+#   )
 
 simple_model <- glm(
-  back_count ~ log_norm_count * last_two + last_two * raised_form_prop + last_two_distance + has_name + has_ane + has_che,
+  back_count ~ last_two * log_norm_count + last_two * raised_form_prop + last_two_distance + has_name + has_ane + has_che,
   data=raising_candidates,
   family="binomial"#,
   # The bobyqa optimizer has more luck converging than the default Nelder_Mead
@@ -25,12 +27,13 @@ simple_model <- glm(
 )
 
 raising_candidates$predicted_simple <- predict(simple_model)
-raising_candidates$predicted_full <- predict(full_model)
+#raising_candidates$predicted_full <- predict(full_model)
 
 root_agg <- raising_candidates %>%
+  filter(raised) %>%
   group_by(
-    root, raised, log_norm_count, raised_form_prop, last_two, last_two_distance, 
-    has_name, has_ane, has_che, predicted_simple, predicted_full
+    root, log_norm_count, raised_form_prop, last_two, last_two_distance, 
+    has_name, has_ane, has_che, predicted_simple #, predicted_full
   ) %>%
   summarize(n = sum(back_count + front_count),
             percent_back = sum(back_count) / n)
