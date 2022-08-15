@@ -327,6 +327,5 @@ for (i in 1:nrow(root_agg)) {
 surface_true_m <- optimize_weights('maxent_data/surface_true_output.csv', in_sep=',', upper_bound=50)
 opaque_m <- optimize_weights('maxent_data/opaque_output.csv', in_sep=',', upper_bound = 50)
 indexed_m <- optimize_weights('maxent_data/indexed_output.csv', in_sep=',', upper_bound=50)
-
-compare_models(surface_true_m, opaque_m, indexed_m, method='bic')
 oracle_m <- optimize_weights('maxent_data/fully_indexed_output.csv', in_sep=',', upper_bound=50)
+compare_models(surface_true_m, opaque_m, indexed_m, method='bic')
