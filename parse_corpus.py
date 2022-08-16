@@ -9,6 +9,7 @@ import time
 
 from zipfile import ZipFile
 
+# A bunch of default arguments
 METADATA_FILENAME = 'metadata.csv'
 DOCS_ZIP = 'pa_documents.zip'
 LAT_DOCS_ZIP = 'lat_documents.zip'
@@ -23,29 +24,24 @@ MAIN_FST_PATH = "uig.automorf.hfst"
 LAST_PROCESSED = 'last_processed.txt'
 PRINT_EVERY = 100
 
+# Some useful constants for text processing
 VOWELS = ['a', 'e', 'i', 'o', 'u', 'ö', 'ü', 'é']
-
 TRANSPARENT_VOWELS = ['i', 'é']
-
 BACK_VOWELS = ['a', 'o', 'u']
-
 FRONT_VOWELS = [ 'ö', 'ü', 'e']
-
 CONSONANTS_ONE = [
 	'b', 'p', 't', 'j', 'x', 'd', 'r', 'z', 's', 'f', 'q', 'k', 'g', 'l', 'm',
 	'n', 'h', 'w', 'y'
 ]
-
 CONSONANTS_TWO = ['ng', 'sh', 'zh', 'ch']
-
 FRONT_CONSONANTS = ['k', 'g']
-
 BACK_CONSONANTS = ['q', 'gh']
 
 UNIGRAM_CONS_RE = "b|p|t|d|j|x|r|z|s|f|q|k|g|l|m|n|h|w|y"
 BIGRAM_CONS_RE = "ng|sh|gh|zh|ch"
 VOWELS_RE = "a|e|i|o|u|é|ü|ö"
 
+# Column names for output file
 COLNAMES = [
 	'root', 'word', 'tags', 'author', 'count', 'back_count', 'front_count', 'raising_candidate', 
 	'raised', 'detailed_template', 'template', 'fine_template', 'last_two', 'last_two_distance',
@@ -170,6 +166,9 @@ def is_raising_candidate(root, word):
 	return False
 
 def convert_latin(word, ortho_transducer):
+	"""
+	Converts a word from some orthography to Latin
+	"""
 	try:
 		return ortho_transducer.lookup(word)[-1][0]
 	except:
@@ -333,6 +332,9 @@ def remove_raised_root(readings, ortho_transducer):
 	return new_readings
 
 def get_latin_parse(lat_transducer, x):
+	"""
+	Parses a word using input Latin orthography
+	"""
 	parse = lat_transducer.lookup(x)
 	if parse:
 		return parse[0][0]
@@ -340,6 +342,10 @@ def get_latin_parse(lat_transducer, x):
 		return ''
 
 def parse_corpus(corpus_dir, latin_input, resume, fst_dir, print_every):
+	"""
+	Top-level logic for parinsg the corpus
+	"""
+	# This lets us stop part way through and resume if necessary
 	if not resume:
 		initialize_files(corpus_dir)
 	else:
@@ -347,8 +353,8 @@ def parse_corpus(corpus_dir, latin_input, resume, fst_dir, print_every):
 		with open(os.path.join(corpus_dir, OUTPUT_DIR, LAST_PROCESSED), 'r') as f:
 			last_processed = f.read()
 
+	# Load metadata and various transducers
 	metadata = pd.read_csv(os.path.join(corpus_dir, METADATA_FILENAME))
-
 	parser = load_transducer(os.path.join(fst_dir, MAIN_FST_PATH))
 
 	if latin_input:
@@ -360,11 +366,13 @@ def parse_corpus(corpus_dir, latin_input, resume, fst_dir, print_every):
 		os.path.join(fst_dir, ORTHO_FST_PATH)
 	)
 
+	# Keep track of parse counts
 	total_words = 0
 	failed_words = 0
 	multiparse_words = 0
 	single_parse_words = 0
 
+	# Get corpus file
 	if not latin_input:
 		zip_file = os.path.join(corpus_dir, DOCS_ZIP)
 	else:
@@ -375,6 +383,7 @@ def parse_corpus(corpus_dir, latin_input, resume, fst_dir, print_every):
 		 open(os.path.join(corpus_dir, OUTPUT_DIR, CONSERVATIVE_FILE), 'a') as conservative_f, \
 		 ZipFile(zip_file) as corpus_zip:
 
+		# Iterate through 
 		for index, row in metadata.iterrows():
 			if resume and not found_start:
 				if row['filename'] == last_processed:
@@ -382,10 +391,12 @@ def parse_corpus(corpus_dir, latin_input, resume, fst_dir, print_every):
 				else:
 					print("{} already processed, skipping".format(row['filename']))
 					continue
+
 			if index % print_every == 0:
 				print("Processing article {} of {}: {}".format(
 					index, len(metadata), row['filename'])
 				)
+
 			with open(os.path.join(corpus_dir, OUTPUT_DIR, LAST_PROCESSED), 'w') as last_processed_f:
 				last_processed_f.write(row['filename'])
 
@@ -480,5 +491,3 @@ if __name__ == "__main__":
 		args.corpus_dir, args.latin_input, args.resume, args.fst_dir,
 		args.print_every
 	)
-
-

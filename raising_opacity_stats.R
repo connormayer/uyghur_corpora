@@ -8,6 +8,7 @@ library(bayesplot)
 # Load in our data. If you want to run this script yourself, you'll need
 # to set the working directory to wherever you've checked out the corpora
 setwd("E:/git_repos/uyghur_corpora")
+
 # We store the parses in zip files to save space
 rfa_file <- archive_read("corpora/rfa/output/conservative_parses.zip")
 rfa_data <- read_csv(rfa_file, col_types = cols())
@@ -255,7 +256,7 @@ mcmc_areas(
   ) 
 
 # GRAPHS
-graph_data <- raisers %>% 
+graph_data <- opaque_raisers %>% 
   group_by(last_two, back_count) %>%
   count()
 
@@ -294,7 +295,7 @@ ggplot(suffix_agg, aes(x=fct_relevel(suffix, levels=c('-che', '-ane', '-name', '
         legend.text=element_text(size=20)) +
   xlab("Suffix identity") +
   ylab("Proportion of tokens")  +
-  scale_fill_discrete(labels=c("Back suffix", "Front suffix"))
+  scale_fill_discrete(labels=c("Front suffix", "Back suffix"))
 ggsave("figures/suffix_raising.png")
 
 # Histograms
