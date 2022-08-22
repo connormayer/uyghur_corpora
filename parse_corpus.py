@@ -412,7 +412,7 @@ def parse_corpus(corpus_dir, latin_input, resume, fst_dir, print_every):
 					author_latin = row.author
 
 			# Load data for a single article
-			doc_file = corpus_zip.open(os.path.split(zip_file)[1].split('.')[0] + '/' + row['filename'])
+			doc_file = corpus_zip.open(row['filename'])
 			document = io.TextIOWrapper(doc_file, 'utf-8').read()
 			
 			clean_doc = clean_document(document)
