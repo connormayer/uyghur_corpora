@@ -1,5 +1,8 @@
 require(tidyverse)
 require(archive)
+require(devtools)
+install_github("connormayer/maxent.ot")
+require(maxent.ot)
 
 # Load in our data. If you want to run this script yourself, you'll need
 # to set the working directory to wherever you've checked out the corpora
@@ -33,8 +36,7 @@ root_agg <- raising_candidates %>%
 
 
 # Create OTSoft format input for suface-true model
-headers <- c('', '', '', 'VAgree', '*Unraised')
-n_constraints = 2
+headers <- c('', '', '', 'VAgree')
 output_file <- 'maxent_data/surface_true_output.csv'
 
 write.table(matrix(headers, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, sep=',')
@@ -42,294 +44,185 @@ write.table(matrix(headers, nrow=1), file=output_file, row.names=FALSE, col.name
 
 for (i in 1:nrow(root_agg)) {
   row <- root_agg[i,]
-  no_raise_f <- c(row$root, paste(row$root, '-F', sep=''))
-  no_raise_b <- c('', paste(row$root, '-B', sep=''))
-  raise_f <- c('', paste(row$root, '-RAISE-F', sep=''))
+  raise_f <- c(row$root, paste(row$root, '-RAISE-F', sep=''))
   raise_b <- c('', paste(row$root, '-RAISE-B', sep=''))
   
   # Add frequencies
-  no_raise_f <- c(no_raise_f, 0)
-  no_raise_b <- c(no_raise_b, 0)
   raise_f <- c(raise_f, (row$n * (1 - row$percent_back)))
   raise_b <- c(raise_b, (row$n * row$percent_back))
   
   # Calculate VAgree violations
   if (row$last_two == 'BB') {
-    no_raise_f <- c(no_raise_f, 1)
-    no_raise_b <- c(no_raise_b, '')
     raise_f <- c(raise_f, 1)
     raise_b <- c(raise_b, '')
   }
   if (row$last_two == 'FF') {
-    no_raise_f <- c(no_raise_f, '')
-    no_raise_b <- c(no_raise_b, 1)
     raise_f <- c(raise_f, '')
     raise_b <- c(raise_b, 1)
   }
   if (row$last_two == 'FB') {
-    no_raise_f <- c(no_raise_f, 1)
-    no_raise_b <- c(no_raise_b, '')
     raise_f <- c(raise_f, '')
     raise_b <- c(raise_b, 1)
   }
   if (row$last_two == 'BF') {
-    no_raise_f <- c(no_raise_f, '')
-    no_raise_b <- c(no_raise_b, 1)
     raise_f <- c(raise_f, 1)
     raise_b <- c(raise_b, '')
   }
   
-  # Do raising violations
-  no_raise_f <- c(no_raise_f, 1)
-  raise_f <- c(raise_f, '')
-  no_raise_b <- c(no_raise_b, 1)
-  raise_b <- c(raise_b, '')
-  
-  write.table(matrix(no_raise_f, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
-  write.table(matrix(no_raise_b, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
   write.table(matrix(raise_f, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
   write.table(matrix(raise_b, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
 }
 
 # Create OTSoft format input for opaque model
 output_file <- 'maxent_data/opaque_output.csv'
-headers <- c('', '', '', '*Unraised', 'HarmonizeBack', 'HarmonizeFront')
-n_constraints = 3
+headers <- c('', '', '', 'HarmonizeBack', 'HarmonizeFront')
 
 write.table(matrix(headers, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, sep=',')
 write.table(matrix(headers, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, sep=',', append=TRUE)
 
 for (i in 1:nrow(root_agg)) {
   row <- root_agg[i,]
-  no_raise_f <- c(row$root, paste(row$root, '-F', sep=''))
-  no_raise_b <- c('', paste(row$root, '-B', sep=''))
-  raise_f <- c('', paste(row$root, '-RAISE-F', sep=''))
+  raise_f <- c(row$root, paste(row$root, '-RAISE-F', sep=''))
   raise_b <- c('', paste(row$root, '-RAISE-B', sep=''))
   
   # Add frequencies
-  no_raise_f <- c(no_raise_f, 0)
-  no_raise_b <- c(no_raise_b, 0)
   raise_f <- c(raise_f, (row$n * (1 - row$percent_back)))
   raise_b <- c(raise_b, (row$n * row$percent_back))
   
-  # Do raising violations
-  no_raise_f <- c(no_raise_f, 1)
-  raise_f <- c(raise_f, '')
-  no_raise_b <- c(no_raise_b, 1)
-  raise_b <- c(raise_b, '')
-  
   # Calculate HarmonizeBack violation
-  no_raise_f <- c(no_raise_f, ifelse(row$last_two %in% c('FB', 'BB'), 1, ''))
-  no_raise_b <- c(no_raise_b, '')
   raise_f <- c(raise_f, ifelse(row$last_two %in% c('FB', 'BB'), 1, ''))
   raise_b <- c(raise_b, '')
   
   # Calculate HarmonizeFront violation
-  no_raise_f <- c(no_raise_f, '')
-  no_raise_b <- c(no_raise_b, ifelse(row$last_two %in% c('BF', 'FF'), 1, ''))
   raise_f <- c(raise_f, '')
   raise_b <- c(raise_b, ifelse(row$last_two %in% c('BF', 'FF'), 1, ''))
-  
-  write.table(matrix(no_raise_f, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
-  write.table(matrix(no_raise_b, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
+
   write.table(matrix(raise_f, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
   write.table(matrix(raise_b, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
 }
 
 # Create OTSoft format input for lexical model
 output_file <- 'maxent_data/indexed_no_phon_output.csv'
-headers <- c('', '', '', '*Unraised', 'HarmonizeBack', 'HarmonizeFront')
-n_constraints = 3
+headers <- c('', '', '', 'HarmonizeBack', 'HarmonizeFront')
 
 write.table(matrix(headers, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, sep=',')
 write.table(matrix(headers, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, sep=',', append=TRUE)
-#write.table(matrix(c('', '', '', rep(0, n_constraints)), nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, sep=',', append=TRUE)
 
 for (i in 1:nrow(root_agg)) {
   row <- root_agg[i,]
-  no_raise_f <- c(row$root, paste(row$root, '-F', sep=''))
-  no_raise_b <- c('', paste(row$root, '-B', sep=''))
-  raise_f <- c('', paste(row$root, '-RAISE-F', sep=''))
+  raise_f <- c(row$root, paste(row$root, '-RAISE-F', sep=''))
   raise_b <- c('', paste(row$root, '-RAISE-B', sep=''))
   
   # Add frequencies
-  no_raise_f <- c(no_raise_f, 0)
-  no_raise_b <- c(no_raise_b, 0)
   raise_f <- c(raise_f, (row$n * (1 - row$percent_back)))
   raise_b <- c(raise_b, (row$n * row$percent_back))
-
-  # Do raising violations
-  no_raise_f <- c(no_raise_f, 1)
-  raise_f <- c(raise_f, '')
-  no_raise_b <- c(no_raise_b, 1)
-  raise_b <- c(raise_b, '')
   
   # Calculate HarmonizeBack violation
   inv_logit <- 1 / (1 + exp(-row$predicted_simple))
   h_b <- inv_logit
-  
-  no_raise_f <- c(no_raise_f, h_b)
-  no_raise_b <- c(no_raise_b, '')
   raise_f <- c(raise_f, h_b)
   raise_b <- c(raise_b, '')
   
   # Calculate HarmonizeFront violation
   h_f <- 1 - inv_logit
-  no_raise_f <- c(no_raise_f, '')
-  no_raise_b <- c(no_raise_b, h_f)
   raise_f <- c(raise_f, '')
   raise_b <- c(raise_b, h_f)
   
-  write.table(matrix(no_raise_f, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
-  write.table(matrix(no_raise_b, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
   write.table(matrix(raise_f, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
   write.table(matrix(raise_b, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
 }
 
 # Create OTSoft format input for opaque-surface model
 output_file <- 'maxent_data/opaque_phon_output.csv'
-headers <- c('', '', '', 'VAgree', '*Unraised', 'HarmonizeBack', 'HarmonizeFront')
-n_constraints = 4
+headers <- c('', '', '', 'VAgree', 'HarmonizeBack', 'HarmonizeFront')
 
 write.table(matrix(headers, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, sep=',')
 write.table(matrix(headers, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, sep=',', append=TRUE)
 
 for (i in 1:nrow(root_agg)) {
   row <- root_agg[i,]
-  no_raise_f <- c(row$root, paste(row$root, '-F', sep=''))
-  no_raise_b <- c('', paste(row$root, '-B', sep=''))
-  raise_f <- c('', paste(row$root, '-RAISE-F', sep=''))
+  raise_f <- c(row$root, paste(row$root, '-RAISE-F', sep=''))
   raise_b <- c('', paste(row$root, '-RAISE-B', sep=''))
   
   # Add frequencies
-  no_raise_f <- c(no_raise_f, 0)
-  no_raise_b <- c(no_raise_b, 0)
   raise_f <- c(raise_f, (row$n * (1 - row$percent_back)))
   raise_b <- c(raise_b, (row$n * row$percent_back))
   
   # Calculate VAgree violations
   if (row$last_two == 'BB') {
-    no_raise_f <- c(no_raise_f, 1)
-    no_raise_b <- c(no_raise_b, '')
     raise_f <- c(raise_f, 1)
     raise_b <- c(raise_b, '')
   }
   if (row$last_two == 'FF') {
-    no_raise_f <- c(no_raise_f, '')
-    no_raise_b <- c(no_raise_b, 1)
     raise_f <- c(raise_f, '')
     raise_b <- c(raise_b, 1)
   }
   if (row$last_two == 'FB') {
-    no_raise_f <- c(no_raise_f, 1)
-    no_raise_b <- c(no_raise_b, '')
     raise_f <- c(raise_f, '')
     raise_b <- c(raise_b, 1)
   }
   if (row$last_two == 'BF') {
-    no_raise_f <- c(no_raise_f, '')
-    no_raise_b <- c(no_raise_b, 1)
     raise_f <- c(raise_f, 1)
     raise_b <- c(raise_b, '')
   }
   
-  # Do raising violations
-  no_raise_f <- c(no_raise_f, 1)
-  raise_f <- c(raise_f, '')
-  no_raise_b <- c(no_raise_b, 1)
-  raise_b <- c(raise_b, '')
-  
   # Calculate HarmonizeBack violation
-  no_raise_f <- c(no_raise_f, ifelse(row$last_two %in% c('FB', 'BB'), 1, ''))
-  no_raise_b <- c(no_raise_b, '')
   raise_f <- c(raise_f, ifelse(row$last_two %in% c('FB', 'BB'), 1, ''))
   raise_b <- c(raise_b, '')
   
   # Calculate HarmonizeFront violation
-  no_raise_f <- c(no_raise_f, '')
-  no_raise_b <- c(no_raise_b, ifelse(row$last_two %in% c('BF', 'FF'), 1, ''))
   raise_f <- c(raise_f, '')
   raise_b <- c(raise_b, ifelse(row$last_two %in% c('BF', 'FF'), 1, ''))
   
-  write.table(matrix(no_raise_f, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
-  write.table(matrix(no_raise_b, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
   write.table(matrix(raise_f, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
   write.table(matrix(raise_b, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
 }
 
 # Create OTSoft format input for lexical-surface model
 output_file <- 'maxent_data/indexed_output.csv'
-headers <- c('', '', '', 'VAgree', '*Unraised', 'HarmonizeBack', 'HarmonizeFront')
-n_constraints = 4
+headers <- c('', '', '', 'VAgree', 'HarmonizeBack', 'HarmonizeFront')
 
 write.table(matrix(headers, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, sep=',')
 write.table(matrix(headers, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, sep=',', append=TRUE)
 
 for (i in 1:nrow(root_agg)) {
   row <- root_agg[i,]
-  no_raise_f <- c(row$root, paste(row$root, '-F', sep=''))
-  no_raise_b <- c('', paste(row$root, '-B', sep=''))
-  raise_f <- c('', paste(row$root, '-RAISE-F', sep=''))
+  raise_f <- c(row$root, paste(row$root, '-RAISE-F', sep=''))
   raise_b <- c('', paste(row$root, '-RAISE-B', sep=''))
   
   # Add frequencies
-  no_raise_f <- c(no_raise_f, 0)
-  no_raise_b <- c(no_raise_b, 0)
   raise_f <- c(raise_f, (row$n * (1 - row$percent_back)))
   raise_b <- c(raise_b, (row$n * row$percent_back))
   
   # Calculate VAgree violations
   if (row$last_two == 'BB') {
-    no_raise_f <- c(no_raise_f, 1)
-    no_raise_b <- c(no_raise_b, '')
     raise_f <- c(raise_f, 1)
     raise_b <- c(raise_b, '')
   }
   if (row$last_two == 'FF') {
-    no_raise_f <- c(no_raise_f, '')
-    no_raise_b <- c(no_raise_b, 1)
     raise_f <- c(raise_f, '')
     raise_b <- c(raise_b, 1)
   }
   if (row$last_two == 'FB') {
-    no_raise_f <- c(no_raise_f, 1)
-    no_raise_b <- c(no_raise_b, '')
     raise_f <- c(raise_f, '')
     raise_b <- c(raise_b, 1)
   }
   if (row$last_two == 'BF') {
-    no_raise_f <- c(no_raise_f, '')
-    no_raise_b <- c(no_raise_b, 1)
     raise_f <- c(raise_f, 1)
     raise_b <- c(raise_b, '')
   }
   
-  # Do raising violations
-  no_raise_f <- c(no_raise_f, 1)
-  raise_f <- c(raise_f, '')
-  no_raise_b <- c(no_raise_b, 1)
-  raise_b <- c(raise_b, '')
-  
   # Calculate HarmonizeBack violation
   inv_logit <- 1 / (1 + exp(-row$predicted_simple))
   h_b <- inv_logit
-
-  no_raise_f <- c(no_raise_f, h_b)
-  no_raise_b <- c(no_raise_b, '')
   raise_f <- c(raise_f, h_b)
   raise_b <- c(raise_b, '')
   
   # Calculate HarmonizeFront violation
-  #h_f <- 1/-log(1-inv_logit)
-  
   h_f <- 1 - inv_logit
-  no_raise_f <- c(no_raise_f, '')
-  no_raise_b <- c(no_raise_b, h_f)
   raise_f <- c(raise_f, '')
   raise_b <- c(raise_b, h_f)
   
-  write.table(matrix(no_raise_f, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
-  write.table(matrix(no_raise_b, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
   write.table(matrix(raise_f, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
   write.table(matrix(raise_b, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
 }
@@ -347,11 +240,11 @@ oracle_ll <- sum(oracle$log_prob)
 # k is the number of roots * 3 because there are four possible outcomes for each
 # root (unraised-b, raised-b, unraised-f, raised-f) and therefore 3 probabilities
 # to set for each root.
-oracle_k <- nrow(root_agg) * 3
+oracle_k <- nrow(root_agg)
 oracle_bic <- log(sum(root_agg$n)) * oracle_k - 2 * oracle_ll
 
 # Fit maxent models
-surface_true_m <- optimize_weights('maxent_data/surface_true_output.csv', in_sep=',', upper_bound=50, mu_scalar=0, sigma_scalar=10)
+surface_true_m <- optimize_weights('maxent_data/surface_true_output.csv', in_sep=',', upper_bound=50)
 opaque_m <- optimize_weights('maxent_data/opaque_output.csv', in_sep=',', upper_bound = 50)
 opaque_phon_m <- optimize_weights('maxent_data/opaque_phon_output.csv', in_sep=',', upper_bound = 50)
 indexed_no_phon_m <- optimize_weights('maxent_data/indexed_no_phon_output.csv', in_sep=',', upper_bound = 50)

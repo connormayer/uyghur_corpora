@@ -4,6 +4,7 @@ require(lme4)
 require(tidyverse)
 library(brms)
 library(bayesplot)
+library(DHARMa)
 
 # Load in our data. If you want to run this script yourself, you'll need
 # to set the working directory to wherever you've checked out the corpora
@@ -194,36 +195,65 @@ chisq.test(table(chi_data_b$last_two, chi_data_b$back_count))
 chisq.test(table(chi_data_f$last_two, chi_data_f$back_count))
 
 ## Code for a frequentist analysis
-# full_model <- glmer(
-#   opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|root) + (1|author),
-#   data=opaque_raisers,
-#   family="binomial",
-#   # The bobyqa optimizer has more luck converging than the default Nelder_Mead
-#   control=glmerControl(optimizer = 'bobyqa')
-# )
+full_model <- glmer(
+  opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|root) + (1|source/author),
+  data=opaque_raisers,
+  family="binomial",
+  # The bobyqa optimizer has more luck converging than the default Nelder_Mead
+  control=glmerControl(optimizer = 'bobyqa')
+)
+
+# Test goodness of fit using DHARMa
+dharma_resids <- simulateResiduals(full_model)
+
+# Test for uniformity
+# This comes back as significant but it's because the data set is so large.
+# Looking at the residuals, the fit seems pretty good.
+uniformity_test <- testUniformity(dharma_resids)
+
+# Test for dispersion
+dispersion_test <- testDispersion(dharma_resids)
+
+# Bootstrapped outlier test because we're using binomial model
+outliers_test <- testOutliers(dharma_resids, type='bootstrap')
+
+# Plot residuals
+plotResiduals(dharma_resids, quantreg = T)
 
 # Test significance of fixed effects using LRT
 # drop1(full_model, test='Chisq', trace=TRUE)
-# 
+#
 # # Same for random effects
-# no_word <- glmer(opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|author), 
-#                  data=opaque_raisers, 
+# no_word <- glmer(opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|author),
+#                  data=opaque_raisers,
 #                  family="binomial",
 #                  control=glmerControl(optimizer = 'bobyqa'))
 # anova(full_model, no_word, test='Chisq')
-# 
-# no_author <- glmer(opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|root), 
-#                    data=opaque_raisers, 
+#
+# no_author <- glmer(opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|root),
+#                    data=opaque_raisers,
 #                    family="binomial",
 #                    control=glmerControl(optimizer = 'bobyqa'))
 # anova(full_model, no_author, test='Chisq')
 
 # Code for a Bayesian analysis
 full_model_brm <- brm(
-  opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|root) + (1|author),
+  opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|root) + (1|source/author),
   data=opaque_raisers,
   family="bernoulli"
 )
+
+model.check <- createDHARMa(
+  simulatedResponse = t(posterior_predict(full_model_brm)),
+  observedResponse = opaque_raisers$opaque,
+  fittedPredictedResponse = apply(t(posterior_epred(full_model_brm)), 1, mean),
+  integerResponse = TRUE
+)
+
+plot(model.check)
+testOutliers(model.check)
+testDispersion(model.check)
+testUniformity(model.check)
 
 # Plot posterior samples
 posterior <- as.matrix(full_model_brm)
