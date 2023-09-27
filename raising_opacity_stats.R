@@ -39,13 +39,13 @@ full_data <- inner_join(full_data, counts, by="root")
 
 # Get only tokens that have the potential to general opaque harmony. These
 # are tokens where:
-# - the final two harmonizing vowels in the root clash
-# - the final vowel COULD raise (that is, it's either 'e' or 'a' and it occurs
-#   in an open syllable
+# - the rightmost two harmonizing vowels in the root clash
+# - the rightmost vowel COULD raise (that is, it's either 'e' or 'a' and it 
+#   occurs in a word-final open syllable
 # - the token includes at least one harmonizing suffix
 
-# We remove tokens that have a number of suffixes that block harmony and impose
-# their own, or a number of suffixes that have strange harmonic behavior.
+# We flag tokens that have suffixes that block harmony and impose
+# their own, and suffixes that have strange harmonic behavior.
 # 'che' and 'ane' routinely harmonize transparently
 full_data <- full_data %>% 
   mutate(
@@ -196,7 +196,8 @@ chisq.test(table(chi_data_f$last_two, chi_data_f$back_count))
 
 ## Code for a frequentist analysis
 full_model <- glmer(
-  opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|root) + (1|source/author),
+  opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + 
+    root_suffix_distance + has_name + has_ane + has_che + (1|root) + (1|source/author),
   data=opaque_raisers,
   family="binomial",
   # The bobyqa optimizer has more luck converging than the default Nelder_Mead
@@ -240,9 +241,12 @@ plotResiduals(dharma_resids, quantreg = T)
 full_model_brm <- brm(
   opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|root) + (1|source/author),
   data=opaque_raisers,
-  family="bernoulli"
+  family="bernoulli",
+  cores = 4,
+  iter = 6000,
+  control = list(adapt_delta=0.999)
 )
-
+saveRDS(full_model_brm, 'brms_model2.test')
 model.check <- createDHARMa(
   simulatedResponse = t(posterior_predict(full_model_brm)),
   observedResponse = opaque_raisers$opaque,
