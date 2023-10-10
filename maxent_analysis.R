@@ -6,7 +6,8 @@ require(maxent.ot)
 
 # Load in our data. If you want to run this script yourself, you'll need
 # to set the working directory to wherever you've checked out the corpora
-setwd("E:/git_repos/uyghur_corpora")
+# setwd("E:/git_repos/uyghur_corpora")
+setwd("C:/Users/conno/git_repos/uyghur_corpora")
 
 # Load data we want to analyze
 input_file <- archive_read('corpora/raising_candidates.zip')
@@ -22,14 +23,33 @@ simple_model <- glm(
   data=raising_candidates,
   family="binomial"
 )
+# simple_model_me <- glmer(
+#   back_count ~ last_one * log_norm_count + last_one * raised_form_prop + has_name + has_ane + has_che + (1|root) + (1|source),
+#   data=raising_candidates,
+#   family="binomial"
+# )
+template_model <- glm(
+  back_count ~ template * log_norm_count + template * raised_form_prop + has_name + has_ane + has_che,
+  data=raising_candidates,
+  family="binomial"
+)
+# template_model_me <- glmer(
+#   back_count ~ template * log_norm_count + template * raised_form_prop + has_name + has_ane + has_che + (1|root) + (1|source),
+#   data=raising_candidates,
+#   family="binomial"
+# )
 raising_candidates$predicted_simple <- predict(simple_model, type='response')
+#raising_candidates$predicted_simple_me <- predict(simple_model_me, type='response')
+raising_candidates$predicted_template <- predict(template_model, type='response')
+#raising_candidates$predicted_template_me <- predict(template_model_me, type='response')
 
 # Aggregate data for simpler analysis
 root_agg <- raising_candidates %>%
   filter(raised) %>%
   group_by(
     root, log_norm_count, raised_form_prop, last_two, last_two_distance, 
-    has_name, has_ane, has_che, predicted_simple #, predicted_full
+    has_name, has_ane, has_che, predicted_simple, #predicted_simple_me, 
+    predicted_template, #predicted_template_me
   ) %>%
   summarize(n = sum(back_count + front_count),
             percent_back = sum(back_count) / n)
@@ -110,8 +130,8 @@ for (i in 1:nrow(root_agg)) {
   raise_b <- c(raise_b, (row$n * row$percent_back))
   
   # Calculate HarmonicUniformity violation
-  raise_f <- c(raise_f, row$predicted_simple)
-  raise_b <- c(raise_b, 1 - row$predicted_simple)
+  raise_f <- c(raise_f, row$predicted_template)
+  raise_b <- c(raise_b, 1 - row$predicted_template)
   
   write.table(matrix(raise_f, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
   write.table(matrix(raise_b, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
@@ -192,8 +212,8 @@ for (i in 1:nrow(root_agg)) {
   }
   
   # Calculate HarmonicUniformity violation
-  raise_f <- c(raise_f, row$predicted_simple)
-  raise_b <- c(raise_b, 1 - row$predicted_simple)
+  raise_f <- c(raise_f, row$predicted_template)
+  raise_b <- c(raise_b, 1 - row$predicted_template)
 
   write.table(matrix(raise_f, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
   write.table(matrix(raise_b, nrow=1), file=output_file, row.names=FALSE, col.names = FALSE, append=TRUE, sep=',')
