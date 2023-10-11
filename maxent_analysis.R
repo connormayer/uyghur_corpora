@@ -232,28 +232,9 @@ lexical_surface_opaque_cv_m <- cross_validate(
   sigma_values = sigmas_to_try
 )
 
-# Compare models
-compare_models(
-  surface_true_m, opaque_m, opaque_surface_m, lexical_m, lexical_surface_m, 
-  lexical_surface_opaque_m, method='bic'
-)
-
-# Get LL and BIC for oracle model set to match empirical frequencies
-oracle <- root_agg %>% 
-  ungroup() %>%
-  select(root, n, percent_back) %>%
-  mutate(back_count = n * percent_back,
-         front_count = n - back_count,
-         log_prob = case_when(
-           back_count == 0 ~ front_count * log(1 - percent_back),
-           front_count == 0 ~ back_count * log(percent_back),
-           TRUE ~ back_count * log(percent_back) + front_count * log(1 - percent_back))
-  )
-
-oracle_ll <- sum(oracle$log_prob)
-
-# k is the number of roots because there are two possible outcomes for each
-# root we consider here (raised-b, raised-f) and therefore one probability
-# to set for each root.
-oracle_k <- nrow(root_agg)
-oracle_bic <- log(sum(root_agg$n)) * oracle_k - 2 * oracle_ll
+surface_true_cv_m
+opaque_cv_m
+opaque_surface_cv_m
+lexical_cv_m
+lexical_surface_cv_m
+lexical_surface_opaque_cv_m
