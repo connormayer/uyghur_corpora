@@ -1,0 +1,2 @@
+model_name,mu,sigma,folds,mean_ll_test,mean_ll_training
+surface_true_output,0,2,5,-80846.04734746735,-323381.3106034414
