@@ -4,6 +4,7 @@ library(archive)
 # install_github("connormayer/maxent.ot")
 library(maxent.ot)
 library(lme4)
+options(dplyr.summarise.inform = FALSE)
 
 # THINGS TO DO:
 # - switch logistic regression model to apply to proportions by using weights
@@ -11,8 +12,8 @@ library(lme4)
 
 # Load in our data. If you want to run this script yourself, you'll need
 # to set the working directory to wherever you've checked out the corpora
-# setwd("E:/git_repos/uyghur_corpora")
-setwd("C:/Users/conno/git_repos/uyghur_corpora")
+setwd("E:/git_repos/uyghur_corpora")
+# setwd("C:/Users/conno/git_repos/uyghur_corpora")
 
 ############################
 # LOAD AND PREPROCESS DATA #
@@ -21,7 +22,7 @@ setwd("C:/Users/conno/git_repos/uyghur_corpora")
 # Load data we want to analyze
 input_file <- archive_read('corpora/full_data_maxent.zip')
 maxent_data <- read_csv(input_file, col_types = cols())
-
+print('hi')
 # Create variable corresponding to final vowel
 maxent_data <- maxent_data %>%
   mutate(last_one = substr(last_two, 2, 2))
@@ -186,27 +187,15 @@ create_tableaux(
   'maxent_data/opaque_surface_output.csv'
 )
 
-# Create tableaux for lexical-surface model
-create_tableaux(
-  root_agg, 
-  c('VAgreeSurface', 'HarmonicUniformity'), 
-  'maxent_data/lexical_surface_output.csv'
-)
-
-# Create tableaux for lexical-opaque-surface model
-create_tableaux(
-  root_agg, 
-  c('VAgreeSurface', 'VAgreeUnderlying', 'HarmonicUniformity'), 
-  'maxent_data/lexical_surface_opaque_output.csv'
-)
-
 ##########################
 # FIT AND COMPARE MODELS #
 ##########################
 
+# Set seed for reproducibility
+set.seed(495869402)
+
 sigmas_to_try <- c(
-  #5, 4, 3, 2, 1, 0.5, 0.1
-  2
+  2, 1, 0.5, 0.1, 0.05, 0.01, 0.001, 0.005
 )
 mus_to_try <- rep(0, length(sigmas_to_try))
 k <- 5
@@ -244,112 +233,125 @@ write_csv(opaque_surface_cv_m, 'maxent_data/model_results/input_surface.csv')
 ###################################
 # BESPOKE K-FOLD CROSS-VALIDATION #
 ###################################
-
-# Set seed for reproducibility
-set.seed(123456789)
-
-do_cross_validation <- function(data, k, constraints, model_name, model_folder, mus, sigmas, create_files=TRUE) {
+# Can't use maxent.ot cross-validation because we need to fit a logistic
+# regression model to each training set.
+do_cross_validation <- function(data, k, constraints, model_name, model_folder, 
+                                mus, sigmas, create_files=TRUE) {
   row_count <- nrow(data)
   randomized_data <- data[sample(row_count),]
   randomized_data$partition <- rep(seq_len(k), ceiling(row_count / k))[1:row_count]
+  result_df <- data.frame()
+  output_file_name <- str_c('maxent_data/model_results/', model_name, '.csv', sep='')
+  write_csv(result_df, output_file_name)
   
-  for (held_out in 1:k) {
-    training <- randomized_data %>%
-      filter(partition != held_out) %>%
-      group_by(
-        root, log_norm_count, raised_form_prop, last_two, last_two_distance, last_one, 
-        has_name, has_ane, has_che, raising_candidate, raised
-      ) %>%
-      summarize(n = sum(back_count + front_count),
-                percent_back = sum(back_count) / n) %>%
-      mutate(raised = ifelse(raised, 'raised_n', 'unraised_n')) %>%
-      pivot_wider(names_from = raised, values_from = c(n, percent_back), values_fill = 0) 
+  for (i in 1:length(mus)) {
+    log_liks_test <- c()
+    log_liks_training <- c()
     
-    test <- randomized_data %>%
-      filter(partition == held_out) %>%
-      group_by(
-        root, log_norm_count, raised_form_prop, last_two, last_two_distance, last_one, 
-        has_name, has_ane, has_che, raising_candidate, raised
-      ) %>%
-      summarize(n = sum(back_count + front_count),
-                percent_back = sum(back_count) / n) %>%
-      mutate(raised = ifelse(raised, 'raised_n', 'unraised_n')) %>%
-      pivot_wider(names_from = raised, values_from = c(n, percent_back), values_fill = 0) 
-    
-    # Train simple logistic regression model to calculate P(hc|x). We're using
-    # proportions weighted by count rather than individual tokens to speed things
-    # up, because we need to train this model quite a few times.
-    # TODO FIX THIS
-    lexical_model <- glm(
-      percent_back ~ last_one * log_norm_count * raised_form_prop + has_name + has_ane + has_che,
-      data=training,
-      family="binomial",
-      weights=training$n
-    )
-    # Apply model to predict data
-    training$p_hc_b <- predict(lexical_model, type='response')
-    test$p_hc_b <- predict(lexical_model, newdata=test, type='response')
-    
-    # Create training tableau
-    training_file <- str_c(
-      model_folder, '/', model_name, '_training_', held_out, '.csv'
-    )
-    if (create_files) {
-      create_tableaux(training, constraints, training_file)
-    }
-    
-    # Create test tableau
-    test_file <- str_c(
-      model_folder, '/', model_name, '_test_', held_out, '.csv'
-    )
-    if (create_files) {
-      create_tableaux(test, constraints, test_file)
-    }
-    for (i in 1:length(mus)) {
-      training_tableaux <- read_csv(training_file)
-      test_tableaux <- read_csv(test_file)
-      fitted_m <- optimize_weights(training_tableaux, mu_scalar=mus[i], sigma_scalar=sigmas[i])
+    for (held_out in 1:k) {
+      print(str_c("Running fold ", held_out, " on mu = ", mus[i], " and sigma = ", sigmas[i]))
+      training <- randomized_data %>%
+        filter(partition != held_out) %>%
+        group_by(
+          root, log_norm_count, raised_form_prop, last_two, last_two_distance, last_one, 
+          has_name, has_ane, has_che, raising_candidate, raised
+        ) %>%
+        summarize(n = sum(back_count + front_count),
+                  percent_back = sum(back_count) / n) %>%
+        mutate(raised = ifelse(raised, 'raised_n', 'unraised_n')) %>%
+        pivot_wider(names_from = raised, values_from = c(n, percent_back), values_fill = 0)
+      
+      # Need a separate training data set for logistic regression that combines
+      # raised and unraised variants
+      training_for_regression <- randomized_data %>%
+        filter(partition != held_out) %>%
+        group_by(
+          root, log_norm_count, raised_form_prop, last_two, last_two_distance, last_one, 
+          has_name, has_ane, has_che
+        ) %>%
+        summarize(n = sum(back_count + front_count),
+                  percent_back = sum(back_count) / n)
+      
+      test <- randomized_data %>%
+        filter(partition == held_out) %>%
+        group_by(
+          root, log_norm_count, raised_form_prop, last_two, last_two_distance, last_one, 
+          has_name, has_ane, has_che, raising_candidate, raised
+        ) %>%
+        summarize(n = sum(back_count + front_count),
+                  percent_back = sum(back_count) / n) %>%
+        mutate(raised = ifelse(raised, 'raised_n', 'unraised_n')) %>%
+        pivot_wider(names_from = raised, values_from = c(n, percent_back), values_fill = 0) 
+      
+      # Train simple logistic regression model to calculate P(hc|x). We're using
+      # proportions weighted by count rather than individual tokens to speed things
+      # up, because we need to train this model quite a few times.
+      lexical_model <- glm(
+        percent_back ~ last_one * log_norm_count * raised_form_prop + has_name + has_ane + has_che,
+        data=training_for_regression,
+        family="binomial",
+        weights=training_for_regression$n
+      )
+      # Apply model to predict data
+      training$p_hc_b <- predict(lexical_model, newdata=training, type='response')
+      test$p_hc_b <- predict(lexical_model, newdata=test, type='response')
+      
+      # Create training tableau
+      training_file <- str_c(
+        model_folder, '/', model_name, '_training_', held_out, '.csv'
+      )
+      if (create_files) {
+        create_tableaux(training, constraints, training_file)
+      }
+      
+      # Create test tableau
+      test_file <- str_c(
+        model_folder, '/', model_name, '_test_', held_out, '.csv'
+      )
+      if (create_files) {
+        create_tableaux(test, constraints, test_file)
+      }
+      training_tableaux <- read_csv(training_file, show_col_types=FALSE)
+      test_tableaux <- read_csv(test_file, show_col_types=FALSE)
+      print("Training model...")
+      fitted_m <- optimize_weights(
+        training_tableaux, mu_scalar=mus[i], sigma_scalar=sigmas[i]
+      )
+      print("Testing on held-out fold")
       predictions <- predict_probabilities(test_tableaux, fitted_m$weights)
+      log_liks_training <- c(log_liks_training, fitted_m$loglik)
+      log_liks_test <- c(log_liks_test, predictions$loglik)
     }
+    mean_ll_training <- mean(log_liks_training)
+    mean_ll_test <- mean(log_liks_test)
+    new_row <- data.frame(
+      model_name=model_name, mu=toString(mus[i]), sigma=toString(sigmas[i]), 
+      folds=k, mean_ll_training=mean_ll_training, mean_ll_test=mean_ll_test
+    )
+    write_csv(new_row, output_file_name)
+    result_df <- rbind(result_df, new_row)
   }
+  return(result_df)
 }
 
-
 # Fit lexical model
-lexical_output <- read_csv('maxent_data/lexical_output.csv')
-lexical_cv_m <- cross_validate(
-  lexical_output,
-  k = 10,
-  mu_values = mus_to_try,
-  sigma_values = sigmas_to_try
+lexical_m <- do_cross_validation(
+  maxent_data, k, c('HarmonicUniformity'), 'lexical', 'maxent_data/lexical', 
+  mus_to_try, sigmas_to_try
 )
+print(lexical_m)
 
 # Fit lexical-surface model
-lexical_surface_output <- read_csv('maxent_data/lexical_surface_output.csv')
-lexical_surface_cv_m <- cross_validate(
-  lexical_surface_output,
-  k = 10,
-  mu_values = mus_to_try,
-  sigma_values = sigmas_to_try
+lexical_surface_m <- do_cross_validation(
+  maxent_data, k, c('VAgreeSurface', 'HarmonicUniformity'), 'lexical_surface', 
+  'maxent_data/lexical_surface', mus_to_try, sigmas_to_try
 )
+print(lexical_surface_m)
 
 # Fit lexical-input-surface model
-lexical_surface_opaque_output <- read_csv(
-  'maxent_data/lexical_surface_opaque_output.csv'
+lexical_input_surface_m <- do_cross_validation(
+  maxent_data, k, c('VAgreeSurface', 'VAgreeUnderlying', 'HarmonicUniformity'), 
+  'lexical_input_surface', 'maxent_data/lexical_input_surface', mus_to_try, 
+  sigmas_to_try
 )
-lexical_surface_opaque_cv_m <- cross_validate(
-  lexical_surface_opaque_output,
-  k = 10,
-  mu_values = mus_to_try,
-  sigma_values = sigmas_to_try
-)
-
-
-
-
-surface_true_cv_m
-opaque_cv_m
-opaque_surface_cv_m
-lexical_cv_m
-lexical_surface_cv_m
-lexical_surface_opaque_cv_m
+print(lexical_input_surface_m)
