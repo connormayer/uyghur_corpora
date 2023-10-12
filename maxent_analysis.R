@@ -200,41 +200,12 @@ sigmas_to_try <- c(
 mus_to_try <- rep(0, length(sigmas_to_try))
 k <- 5
 
-# Fit surface-true model
-surface_true_output <- read_csv('maxent_data/surface_true_output.csv')
-surface_true_cv_m <- cross_validate(
-  surface_true_output,
-  k = k,
-  mu_values = mus_to_try,
-  sigma_values = sigmas_to_try
-)
-write_csv(surface_true_cv_m, 'maxent_data/model_results/surface_true.csv')
-
-# Fit input-oriented model
-opaque_output <- read_csv('maxent_data/opaque_output.csv')
-opaque_cv_m <- cross_validate(
-  opaque_output,
-  k = k,
-  mu_values = mus_to_try,
-  sigma_values = sigmas_to_try
-)
-write_csv(opaque_cv_m, 'maxent_data/model_results/input.csv')
-
-# Fit input-surface-model
-opaque_surface_output <- read_csv('maxent_data/opaque_surface_output.csv')
-opaque_surface_cv_m <- cross_validate(
-  opaque_surface_output,
-  k = k,
-  mu_values = mus_to_try,
-  sigma_values = sigmas_to_try
-)
-write_csv(opaque_surface_cv_m, 'maxent_data/model_results/input_surface.csv')
-
 ###################################
 # BESPOKE K-FOLD CROSS-VALIDATION #
 ###################################
 # Can't use maxent.ot cross-validation because we need to fit a logistic
-# regression model to each training set.
+# regression model to each training set. Also, the data sets are so large
+# here that this takes ages unless it's parallelized, which this function does.
 do_cross_validation <- function(data, k, constraints, model_name, model_folder, 
                                 mus, sigmas, create_files=TRUE) {
   row_count <- nrow(data)
@@ -261,17 +232,6 @@ do_cross_validation <- function(data, k, constraints, model_name, model_folder,
         mutate(raised = ifelse(raised, 'raised_n', 'unraised_n')) %>%
         pivot_wider(names_from = raised, values_from = c(n, percent_back), values_fill = 0)
       
-      # Need a separate training data set for logistic regression that combines
-      # raised and unraised variants
-      training_for_regression <- randomized_data %>%
-        filter(partition != held_out) %>%
-        group_by(
-          root, log_norm_count, raised_form_prop, last_two, last_two_distance, last_one, 
-          has_name, has_ane, has_che
-        ) %>%
-        summarize(n = sum(back_count + front_count),
-                  percent_back = sum(back_count) / n)
-      
       test <- randomized_data %>%
         filter(partition == held_out) %>%
         group_by(
@@ -283,18 +243,32 @@ do_cross_validation <- function(data, k, constraints, model_name, model_folder,
         mutate(raised = ifelse(raised, 'raised_n', 'unraised_n')) %>%
         pivot_wider(names_from = raised, values_from = c(n, percent_back), values_fill = 0) 
       
-      # Train simple logistic regression model to calculate P(hc|x). We're using
-      # proportions weighted by count rather than individual tokens to speed things
-      # up, because we need to train this model quite a few times.
-      lexical_model <- glm(
-        percent_back ~ last_one * log_norm_count * raised_form_prop + has_name + has_ane + has_che,
-        data=training_for_regression,
-        family="binomial",
-        weights=training_for_regression$n
-      )
-      # Apply model to predict data
-      training$p_hc_b <- predict(lexical_model, newdata=training, type='response')
-      test$p_hc_b <- predict(lexical_model, newdata=test, type='response')
+      if ("HarmonicUniformity" %in% constraints) {
+        # Need a separate training data set for logistic regression that combines
+        # raised and unraised variants
+        training_for_regression <- randomized_data %>%
+          filter(partition != held_out) %>%
+          group_by(
+            root, log_norm_count, raised_form_prop, last_two, last_two_distance, last_one, 
+            has_name, has_ane, has_che
+          ) %>%
+          summarize(n = sum(back_count + front_count),
+                    percent_back = sum(back_count) / n)
+        
+        # Train simple logistic regression model to calculate P(hc|x). We're using
+        # proportions weighted by count rather than individual tokens to speed things
+        # up, because we need to train this model quite a few times.
+        lexical_model <- glm(
+          percent_back ~ last_one * log_norm_count * raised_form_prop + has_name + has_ane + has_che,
+          data=training_for_regression,
+          family="binomial",
+          weights=training_for_regression$n
+        )
+        # Apply model to predict data
+        training$p_hc_b <- predict(lexical_model, newdata=training, type='response')
+        test$p_hc_b <- predict(lexical_model, newdata=test, type='response')
+        
+      }
       
       # Create training tableau
       training_file <- str_c(
@@ -333,6 +307,36 @@ do_cross_validation <- function(data, k, constraints, model_name, model_folder,
   }
   return(result_df)
 }
+
+# Fit surface-true model
+surface_true_output <- read_csv('maxent_data/surface_true_output.csv')
+surface_true_cv_m <- cross_validate(
+  surface_true_output,
+  k = k,
+  mu_values = mus_to_try,
+  sigma_values = sigmas_to_try
+)
+write_csv(surface_true_cv_m, 'maxent_data/model_results/surface_true.csv')
+
+# Fit input-oriented model
+opaque_output <- read_csv('maxent_data/opaque_output.csv')
+opaque_cv_m <- cross_validate(
+  opaque_output,
+  k = k,
+  mu_values = mus_to_try,
+  sigma_values = sigmas_to_try
+)
+write_csv(opaque_cv_m, 'maxent_data/model_results/input.csv')
+
+# Fit input-surface-model
+opaque_surface_output <- read_csv('maxent_data/opaque_surface_output.csv')
+opaque_surface_cv_m <- cross_validate(
+  opaque_surface_output,
+  k = k,
+  mu_values = mus_to_try,
+  sigma_values = sigmas_to_try
+)
+write_csv(opaque_surface_cv_m, 'maxent_data/model_results/input_surface.csv')
 
 # Fit lexical model
 lexical_m <- do_cross_validation(
