@@ -5,12 +5,15 @@ library(archive)
 library(maxent.ot)
 library(lme4)
 options(dplyr.summarise.inform = FALSE)
+library(doParallel)
+library(foreach)
 
-# THINGS TO DO:
-# - switch logistic regression model to apply to proportions by using weights
-# - set up k-fold validation for lexical models
+# Set up parallel environment
+n.cores <- parallel::detectCores() - 1
+my.cluster <- parallel::makeCluster(n.cores, type="PSOCK")
+doParallel::registerDoParallel(cl = my.cluster)
 
-# Load in our data. If you want to run this script yourself, you'll need
+# If you want to run this script yourself, you'll need
 # to set the working directory to wherever you've checked out the corpora
 setwd("E:/git_repos/uyghur_corpora")
 # setwd("C:/Users/conno/git_repos/uyghur_corpora")
@@ -22,25 +25,10 @@ setwd("E:/git_repos/uyghur_corpora")
 # Load data we want to analyze
 input_file <- archive_read('corpora/full_data_maxent.zip')
 maxent_data <- read_csv(input_file, col_types = cols())
-print('hi')
+
 # Create variable corresponding to final vowel
-maxent_data <- maxent_data %>%
+maxent_data <- maxent_data |>
   mutate(last_one = substr(last_two, 2, 2))
-
-# Aggregate data for simpler analysis
-root_agg <- maxent_data %>%
-  group_by(
-    root, log_norm_count, raised_form_prop, last_two, last_two_distance, last_one, 
-    has_name, has_ane, has_che, raising_candidate, raised
-  ) %>%
-  summarize(n = sum(back_count + front_count),
-            percent_back = sum(back_count) / n) %>%
-  mutate(raised = ifelse(raised, 'raised_n', 'unraised_n')) %>%
-  pivot_wider(names_from = raised, values_from = c(n, percent_back), values_fill = 0) 
-
-###########################
-# BUILD AND SAVE TABLEAUX #
-###########################
 
 # Function that builds relevant tableaux given a list of constraints
 create_tableaux <- function(data, constraints, output_file) {
@@ -61,7 +49,7 @@ create_tableaux <- function(data, constraints, output_file) {
     #   should never show any raising.
     should_raise <- row$raising_candidate & row$raised_form_prop > 0
     
-    root_name <- str_c(
+    root_name <- stringr::str_c(
       row$root, 
       ifelse(should_raise, 'RAISER', 'NON_RAISER'),
       sep='-'
@@ -166,196 +154,212 @@ create_tableaux <- function(data, constraints, output_file) {
   }
 }
 
-# Create tableaux for surface-true model
-create_tableaux(
-  root_agg, 
-  c('VAgreeSurface'), 
-  'maxent_data/surface_true_output.csv'
-)
-
-# Create tableaux for input-sensitive model
-create_tableaux(
-  root_agg, 
-  c('VAgreeUnderlying'), 
-  'maxent_data/opaque_output.csv'
-)
-
-# Create tableaux for input-surface model
-create_tableaux(
-  root_agg, 
-  c('VAgreeSurface', 'VAgreeUnderlying'), 
-  'maxent_data/opaque_surface_output.csv'
-)
-
 ##########################
 # FIT AND COMPARE MODELS #
 ##########################
 
-# Set seed for reproducibility
-set.seed(495869402)
-
-sigmas_to_try <- c(
-  2, 1, 0.5, 0.1, 0.05, 0.01, 0.001, 0.005
-)
-mus_to_try <- rep(0, length(sigmas_to_try))
-k <- 5
-
-###################################
-# BESPOKE K-FOLD CROSS-VALIDATION #
-###################################
 # Can't use maxent.ot cross-validation because we need to fit a logistic
 # regression model to each training set. Also, the data sets are so large
 # here that this takes ages unless it's parallelized, which this function does.
-do_cross_validation <- function(data, k, constraints, model_name, model_folder, 
-                                mus, sigmas, create_files=TRUE) {
-  row_count <- nrow(data)
-  randomized_data <- data[sample(row_count),]
-  randomized_data$partition <- rep(seq_len(k), ceiling(row_count / k))[1:row_count]
-  result_df <- data.frame()
-  output_file_name <- str_c('maxent_data/model_results/', model_name, '.csv', sep='')
-  write_csv(result_df, output_file_name)
+create_partitions <- function(data, k, model_details) {
+  # Define grid of mu/sigmas x held-out partition
+  param_grid <- expand.grid(1:length(model_details), 1:k)
+  colnames(param_grid) <- c("model_idx", "held_out")
   
-  for (i in 1:length(mus)) {
-    log_liks_test <- c()
-    log_liks_training <- c()
+  foreach(row_idx=1:nrow(param_grid), .export = 'create_tableaux') %dopar% {
+    model_row <- model_details[[param_grid[row_idx,]$model_idx]]
+    model_name <- model_row[1]
+    constraints <- model_row[2:length(model_row)]
+    model_folder <- stringr::str_c('maxent_data/', model_name)
     
-    for (held_out in 1:k) {
-      print(str_c("Running fold ", held_out, " on mu = ", mus[i], " and sigma = ", sigmas[i]))
-      training <- randomized_data %>%
-        filter(partition != held_out) %>%
-        group_by(
-          root, log_norm_count, raised_form_prop, last_two, last_two_distance, last_one, 
-          has_name, has_ane, has_che, raising_candidate, raised
-        ) %>%
-        summarize(n = sum(back_count + front_count),
-                  percent_back = sum(back_count) / n) %>%
-        mutate(raised = ifelse(raised, 'raised_n', 'unraised_n')) %>%
-        pivot_wider(names_from = raised, values_from = c(n, percent_back), values_fill = 0)
-      
-      test <- randomized_data %>%
-        filter(partition == held_out) %>%
-        group_by(
-          root, log_norm_count, raised_form_prop, last_two, last_two_distance, last_one, 
-          has_name, has_ane, has_che, raising_candidate, raised
-        ) %>%
-        summarize(n = sum(back_count + front_count),
-                  percent_back = sum(back_count) / n) %>%
-        mutate(raised = ifelse(raised, 'raised_n', 'unraised_n')) %>%
-        pivot_wider(names_from = raised, values_from = c(n, percent_back), values_fill = 0) 
-      
-      if ("HarmonicUniformity" %in% constraints) {
-        # Need a separate training data set for logistic regression that combines
-        # raised and unraised variants
-        training_for_regression <- randomized_data %>%
-          filter(partition != held_out) %>%
-          group_by(
-            root, log_norm_count, raised_form_prop, last_two, last_two_distance, last_one, 
-            has_name, has_ane, has_che
-          ) %>%
-          summarize(n = sum(back_count + front_count),
-                    percent_back = sum(back_count) / n)
-        
-        # Train simple logistic regression model to calculate P(hc|x). We're using
-        # proportions weighted by count rather than individual tokens to speed things
-        # up, because we need to train this model quite a few times.
-        lexical_model <- glm(
-          percent_back ~ last_one * log_norm_count * raised_form_prop + has_name + has_ane + has_che,
-          data=training_for_regression,
-          family="binomial",
-          weights=training_for_regression$n
-        )
-        # Apply model to predict data
-        training$p_hc_b <- predict(lexical_model, newdata=training, type='response')
-        test$p_hc_b <- predict(lexical_model, newdata=test, type='response')
-        
-      }
-      
-      # Create training tableau
-      training_file <- str_c(
-        model_folder, '/', model_name, '_training_', held_out, '.csv'
+    held_out <- param_grid[row_idx,]$held_out
+    
+    training <- data |>
+      dplyr::filter(partition != held_out) |>
+      dplyr::group_by(
+        root, log_norm_count, raised_form_prop, last_two, last_two_distance, 
+        last_one, has_name, has_ane, has_che, raising_candidate, raised
+      ) |>
+      dplyr::summarize(n = sum(back_count + front_count),
+                       percent_back = sum(back_count) / n) |>
+      dplyr::mutate(raised = ifelse(raised, 'raised_n', 'unraised_n')) |>
+      tidyr::pivot_wider(
+        names_from = raised, values_from = c(n, percent_back), values_fill = 0
       )
-      if (create_files) {
-        create_tableaux(training, constraints, training_file)
-      }
+    
+    test <- data |>
+      dplyr::filter(partition == held_out) |>
+      dplyr::group_by(
+        root, log_norm_count, raised_form_prop, last_two, last_two_distance, 
+        last_one, has_name, has_ane, has_che, raising_candidate, raised
+      ) |>
+      dplyr::summarize(n = sum(back_count + front_count),
+                       percent_back = sum(back_count) / n) |>
+      dplyr::mutate(raised = ifelse(raised, 'raised_n', 'unraised_n')) |>
+      tidyr::pivot_wider(
+        names_from = raised, values_from = c(n, percent_back), values_fill = 0
+      )
+    
+    if ("HarmonicUniformity" %in% constraints) {
+      # Need a separate training data set for logistic regression that combines
+      # raised and unraised variants
+      training_for_regression <- data |>
+        dplyr::filter(partition != held_out) |>
+        dplyr::group_by(
+          root, log_norm_count, raised_form_prop, last_two, last_two_distance, last_one,
+          has_name, has_ane, has_che
+        ) |>
+        dplyr::summarize(n = sum(back_count + front_count),
+                         percent_back = sum(back_count) / n)
       
-      # Create test tableau
-      test_file <- str_c(
-        model_folder, '/', model_name, '_test_', held_out, '.csv'
+      # Train simple logistic regression model to calculate P(hc|x). We're using
+      # proportions weighted by count rather than individual tokens to speed things
+      # up, because we need to train this model quite a few times.
+      lexical_model <- glm(
+        percent_back ~ last_one * log_norm_count * raised_form_prop + has_name + has_ane + has_che,
+        data=training_for_regression,
+        family="binomial",
+        weights=training_for_regression$n
       )
-      if (create_files) {
-        create_tableaux(test, constraints, test_file)
-      }
-      training_tableaux <- read_csv(training_file, show_col_types=FALSE)
-      test_tableaux <- read_csv(test_file, show_col_types=FALSE)
-      print("Training model...")
-      fitted_m <- optimize_weights(
-        training_tableaux, mu_scalar=mus[i], sigma_scalar=sigmas[i]
-      )
-      print("Testing on held-out fold")
-      predictions <- predict_probabilities(test_tableaux, fitted_m$weights)
-      log_liks_training <- c(log_liks_training, fitted_m$loglik)
-      log_liks_test <- c(log_liks_test, predictions$loglik)
+      # Apply model to predict data
+      training$p_hc_b <- predict(lexical_model, newdata=training, type='response')
+      test$p_hc_b <- predict(lexical_model, newdata=test, type='response')
     }
-    mean_ll_training <- mean(log_liks_training)
-    mean_ll_test <- mean(log_liks_test)
-    new_row <- data.frame(
-      model_name=model_name, mu=toString(mus[i]), sigma=toString(sigmas[i]), 
-      folds=k, mean_ll_training=mean_ll_training, mean_ll_test=mean_ll_test
+    
+    # Create training tableau
+    training_file <- stringr::str_c(
+      model_folder, '/', model_name, '_training_', held_out, '.csv'
     )
-    write_csv(new_row, output_file_name)
-    result_df <- rbind(result_df, new_row)
+    create_tableaux(training, constraints, training_file)
+    
+    # Create test tableau
+    test_file <- stringr::str_c(
+      model_folder, '/', model_name, '_test_', held_out, '.csv'
+    )
+    create_tableaux(test, constraints, test_file)
+    return(NA)
   }
-  return(result_df)
+  return(NA)
+}
+
+do_cross_validation <- function(k, model_name, model_folder, mus, sigmas) {
+  # Define grid of mu/sigmas x held-out partition
+  param_grid <- expand.grid(1:length(mus), 1:k)
+  colnames(param_grid) <- c("param_idx", "held_out")
+  
+  # Fit models in parallel for efficiency
+  result <- foreach(row_idx=1:nrow(param_grid), .combine=rbind,
+                    .export = 'create_tableaux') %dopar% {
+    param_row <- param_grid[row_idx,]
+    mu <- mus[param_row$param_idx]
+    sigma <- sigmas[param_row$param_idx]
+    held_out <- param_row$held_out
+  
+    print(stringr::str_c(
+      "Running fold ", held_out, " on mu = ", mu, " and sigma = ", sigma)
+    )
+
+    training_file <- stringr::str_c(
+      model_folder, '/', model_name, '_training_', held_out, '.csv'
+    )
+
+    test_file <- stringr::str_c(
+      model_folder, '/', model_name, '_test_', held_out, '.csv'
+    )
+
+    training_tableaux <- readr::read_csv(training_file, show_col_types=FALSE)
+    test_tableaux <- readr::read_csv(test_file, show_col_types=FALSE)
+    print("Training model...")
+    fitted_m <- maxent.ot::optimize_weights(
+      training_tableaux, mu_scalar=mu, sigma_scalar=sigma
+    )
+    print("Testing on held-out fold")
+    predictions <- maxent.ot::predict_probabilities(test_tableaux, fitted_m$weights)
+    return(data.frame(model_name = model_name, mu=mu, sigma=sigma, folds=k,
+                      held_out=held_out, ll_train=fitted_m$loglik,
+                      ll_test=predictions$loglik))
+  }
+  
+  agg_result <- result |>
+    group_by(model_name, mu, sigma, folds) |>
+    summarize(mean_ll_train=mean(ll_train),
+              mean_ll_test=mean(ll_test),
+              sd_ll_train=sd(ll_train),
+              sd_ll_test=sd(ll_test))
+  output_file_name <- str_c('maxent_data/model_results/', model_name, '.csv', sep='')
+  write_csv(agg_result, output_file_name)
+  return(agg_result)
+}
+
+sigmas_to_try <- c(
+  500, 200, 100, 50, 20, 10, 5, 2, 1
+)
+mus_to_try <- rep(0, length(sigmas_to_try))
+k <- 10
+
+# Set this to TRUE and change the seed to produce new partitions
+CREATE_FILES <- TRUE
+
+if (CREATE_FILES) {
+  # Set seed for reproducibility
+  set.seed(495869402)
+  
+  # Define partitions, we'll use the same ones for each model
+  row_count <- nrow(maxent_data)
+  randomized_data <- maxent_data[sample(row_count),]
+  randomized_data$partition <- rep(seq_len(k), ceiling(row_count / k))[1:row_count]
+  
+  # Create training and test tableaux for each partition of each model
+  # This means we use the same partitions for each model
+  # We do this in advance to speed up run-time of cross-validation, which lets
+  # use easily try a larger range of sigmas
+  model_details <- list(
+    c("surface", "VAgreeSurface"),
+    c("input", "VAgreeUnderlying"),
+    c("input_surface", "VAgreeSurface", "VAgreeUnderlying"),
+    c("lexical", "HarmonicUniformity"),
+    c("lexical_surface", "VAgreeSurface", "HarmonicUniformity"),
+    c("lexical_input_surface", "VAgreeSurface", "VAgreeUnderlying", 
+      "HarmonicUniformity")
+  )
+  create_partitions(randomized_data, k, model_details)
 }
 
 # Fit surface-true model
-surface_true_output <- read_csv('maxent_data/surface_true_output.csv')
-surface_true_cv_m <- cross_validate(
-  surface_true_output,
-  k = k,
-  mu_values = mus_to_try,
-  sigma_values = sigmas_to_try
+surface_m <- do_cross_validation(
+  k, 'surface', 'maxent_data/surface', mus_to_try, sigmas_to_try
 )
-write_csv(surface_true_cv_m, 'maxent_data/model_results/surface_true.csv')
+print(surface_m)
 
 # Fit input-oriented model
-opaque_output <- read_csv('maxent_data/opaque_output.csv')
-opaque_cv_m <- cross_validate(
-  opaque_output,
-  k = k,
-  mu_values = mus_to_try,
-  sigma_values = sigmas_to_try
+input_m <- do_cross_validation(
+  k, 'input', 'maxent_data/input', mus_to_try, sigmas_to_try
 )
-write_csv(opaque_cv_m, 'maxent_data/model_results/input.csv')
+print(input_m)
 
 # Fit input-surface-model
-opaque_surface_output <- read_csv('maxent_data/opaque_surface_output.csv')
-opaque_surface_cv_m <- cross_validate(
-  opaque_surface_output,
-  k = k,
-  mu_values = mus_to_try,
-  sigma_values = sigmas_to_try
+input_surface_m <- do_cross_validation(
+  k, 'input_surface', 'maxent_data/input_surface', mus_to_try, sigmas_to_try
 )
-write_csv(opaque_surface_cv_m, 'maxent_data/model_results/input_surface.csv')
+print(input_surface_m)
 
 # Fit lexical model
 lexical_m <- do_cross_validation(
-  maxent_data, k, c('HarmonicUniformity'), 'lexical', 'maxent_data/lexical', 
-  mus_to_try, sigmas_to_try
+  k, 'lexical', 'maxent_data/lexical', mus_to_try, sigmas_to_try
 )
 print(lexical_m)
 
 # Fit lexical-surface model
 lexical_surface_m <- do_cross_validation(
-  maxent_data, k, c('VAgreeSurface', 'HarmonicUniformity'), 'lexical_surface', 
-  'maxent_data/lexical_surface', mus_to_try, sigmas_to_try
+  k, 'lexical_surface', 'maxent_data/lexical_surface', mus_to_try, sigmas_to_try
 )
 print(lexical_surface_m)
 
 # Fit lexical-input-surface model
 lexical_input_surface_m <- do_cross_validation(
-  maxent_data, k, c('VAgreeSurface', 'VAgreeUnderlying', 'HarmonicUniformity'), 
-  'lexical_input_surface', 'maxent_data/lexical_input_surface', mus_to_try, 
+  k, 'lexical_input_surface', 'maxent_data/lexical_input_surface', mus_to_try,
   sigmas_to_try
 )
 print(lexical_input_surface_m)
+
+parallel::stopCluster(cl = my.cluster)
