@@ -292,13 +292,13 @@ do_cross_validation <- function(k, model_name, model_folder, mus, sigmas) {
 }
 
 sigmas_to_try <- c(
-  500, 200, 100, 50, 20, 10, 5, 2, 1
+  0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.001
 )
 mus_to_try <- rep(0, length(sigmas_to_try))
 k <- 10
 
 # Set this to TRUE and change the seed to produce new partitions
-CREATE_FILES <- TRUE
+CREATE_FILES <- FALSE
 
 if (CREATE_FILES) {
   # Set seed for reproducibility
