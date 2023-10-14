@@ -9,3 +9,8 @@ This contains the code for "A large-scale corpus study of phonological opacity i
 * The `opaque_raising_stats.R` script does some additional data filtering and text processing, carries out the statistical analysis presented in the paper, and generates the figures. You should be able to run this by simply downloading the required R libraries.
 
 * The `maxent_analysis.R` script converts corpus data into OTSoft format and then fits MaxEnt models.
+
+The webscrapers used to produce the corpora can be found below:
+* [RFA scraper](https://github.com/yzgncx/RFA-Scraper)
+* [Uyghur Awazi scraper](https://github.com/connormayer/uyghur_tools/tree/master/uyghur_awazi_scraper)
+* [Uyghur akadémiyisi scraper](https://github.com/rgandhasri87/UyghurAcademyWebsiteSpider-UG)
