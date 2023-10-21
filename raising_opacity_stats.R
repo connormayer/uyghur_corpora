@@ -352,28 +352,3 @@ root_agg %>%
         axis.title.x = element_text(size=25),
         axis.title.y = element_text(size=25))
 ggsave('figures/fb_histogram.png')
-
-# Scatterplots (not used in paper)
-ggplot(data=root_agg, aes(x=log_norm_count, y=opaque_rate)) +
-  #geom_point(size=4) +
-  geom_jitter(size=3, height=0.01) +
-  xlab("Log root token count") +
-  ylab("Proportion of opaque tokens") +
-  theme(axis.text.x = element_text(size=20),
-        axis.text.y = element_text(size=20),
-        axis.title.x = element_text(size=25),
-        axis.title.y = element_text(size=25),
-        plot.title = element_text(size=30, hjust=0.5))
-  ggsave("figures/frequency_scatter.png")
-  
-  ggplot(data=root_agg, aes(x=raised_form_prop, y=opaque_rate)) +
-    #geom_point(size=4) +
-    geom_jitter(size=3, height=0.01) +
-    xlab("Log root token count") +
-    ylab("Proportion of opaque tokens") +
-    theme(axis.text.x = element_text(size=20),
-          axis.text.y = element_text(size=20),
-          axis.title.x = element_text(size=25),
-          axis.title.y = element_text(size=25),
-          plot.title = element_text(size=30, hjust=0.5))
-  ggsave("figures/raising_rate_scatter.png")

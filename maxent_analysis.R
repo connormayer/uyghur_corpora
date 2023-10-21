@@ -298,6 +298,8 @@ do_cross_validation <- function(k, model_name, model_folder, mus, sigmas) {
 }
 
 sigmas_to_try <- c(
+  # These low sigmas produce poor fits for all models
+  # 0.001, 0.01, 0.02, 0.05, 0.1, 0.2, 0.5, 
   1, 10, 20, 50, 100, 200, 500
 )
 mus_to_try <- rep(0, length(sigmas_to_try))
@@ -332,59 +334,41 @@ if (CREATE_FILES) {
 }
 
 # Fit surface-true model
-# surface_m <- do_cross_validation(
-#   k, 'surface', 'maxent_data/surface', mus_to_try, sigmas_to_try
-# )
-# print(surface_m)
+surface_m <- do_cross_validation(
+  k, 'surface', 'maxent_data/surface', mus_to_try, sigmas_to_try
+)
+print(surface_m)
 
 # Fit input-oriented model
-# input_m <- do_cross_validation(
-#   k, 'input', 'maxent_data/input', mus_to_try, sigmas_to_try
-# )
-# print(input_m)
+input_m <- do_cross_validation(
+  k, 'input', 'maxent_data/input', mus_to_try, sigmas_to_try
+)
+print(input_m)
 
 # Fit input-surface-model
-# input_surface_m <- do_cross_validation(
-#   k, 'input_surface', 'maxent_data/input_surface', mus_to_try, sigmas_to_try
-# )
-# print(input_surface_m)
-
-# Fit lexical model
-# lexical_m <- do_cross_validation(
-#   k, 'lexical', 'maxent_data/lexical', mus_to_try, sigmas_to_try
-# )
-# print(lexical_m)
-
-# Fit lexical model
-lexical_m_me <- do_cross_validation(
-  k, 'lexical_me', 'maxent_data/lexical_me', mus_to_try, sigmas_to_try
+input_surface_m <- do_cross_validation(
+  k, 'input_surface', 'maxent_data/input_surface', mus_to_try, sigmas_to_try
 )
-print(lexical_m_me)
+print(input_surface_m)
+
+# Fit lexical model
+lexical_m <- do_cross_validation(
+  k, 'lexical', 'maxent_data/lexical', mus_to_try, sigmas_to_try
+)
+print(lexical_m)
 
 # # Fit lexical-surface model
-# lexical_surface_m <- do_cross_validation(
-#   k, 'lexical_surface', 'maxent_data/lexical_surface', mus_to_try, sigmas_to_try
-# )
-# print(lexical_surface_m)
-
-# Fit lexical-surface model
-lexical_surface_m_me <- do_cross_validation(
-  k, 'lexical_surface_me', 'maxent_data/lexical_surface_me', mus_to_try, sigmas_to_try
+lexical_surface_m <- do_cross_validation(
+  k, 'lexical_surface', 'maxent_data/lexical_surface', mus_to_try, sigmas_to_try
 )
-print(lexical_surface_m_me)
+print(lexical_surface_m)
 
 # Fit lexical-input-surface model
-# lexical_input_surface_m <- do_cross_validation(
-#   k, 'lexical_input_surface', 'maxent_data/lexical_input_surface', mus_to_try,
-#   sigmas_to_try
-# )
-# print(lexical_input_surface_m)
-
-lexical_input_surface_m_me <- do_cross_validation(
-  k, 'lexical_input_surface_me', 'maxent_data/lexical_input_surface_me', mus_to_try,
+lexical_input_surface_m <- do_cross_validation(
+  k, 'lexical_input_surface', 'maxent_data/lexical_input_surface', mus_to_try,
   sigmas_to_try
 )
-print(lexical_input_surface_m_me)
+print(lexical_input_surface_m)
 
 parallel::stopCluster(cl = my.cluster)
 
