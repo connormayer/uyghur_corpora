@@ -2,7 +2,7 @@
 
 This contains the code for "A large-scale corpus study of phonological opacity in Uyghur" by REDACTED.
 
-* The `corpora` folder contains each of the corpora. The `XX_documents.zip` file in each directory contains the raw text of every article, and the `metadata.csv` file contains the listing of articles and corresponding metadata. The `output` folder in each directory contains the output of the `apertium` transducer run on each corpus. The `raising_candidates.zip` file is a subset of the parses in each corpus that contains all the BB, FB, BF, and BB roots that can potentially undergo raising. The corpora and parses are stored in zip files for space and efficiency reasons. The scripts that operate on this data automatically zip/unzip them.
+* The `corpora` folder contains each of the corpora. The `XX_documents.zip` file in each directory contains the raw text of every article, and the `metadata.csv` file contains the listing of articles and corresponding metadata. The `output` folder in each directory contains the output of the `apertium` transducer run on each corpus. The `raising_candidates.zip` file is a subset of the parses in each corpus that contains all the BB, FB, BF, and BB root tokens that can potentially undergo raising and include at least one harmonizing suffix. The `full_data_maxent`.zip` file is all the BB, FB, BF, and BB root tokens with harmonizing suffixes, regardless of whether they undergo raising. The corpora and parses are stored in zip files for space and efficiency reasons. The scripts that operate on this data automatically zip/unzip them.
   
 * The `figures` folder contains several figures used in the paper.
   
