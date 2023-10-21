@@ -141,17 +141,21 @@ full_data <- full_data %>%
 full_data <- full_data %>% 
   filter(!(front_count > 0 & back_count > 0))
 
-raising_candidates <- full_data %>%
+# For maxent analysis, keep only BF/FB/BB/FF root tokens with harmonizing
+# suffixes
+maxent_data <- full_data %>%
   filter(last_two %in% c('BF', 'FB', 'BB', 'FF')) %>%
-  filter(raising_candidate) %>%
   filter(back_count + front_count > 0) %>%
   mutate(
     log_total_count = log(total_count),
     log_norm_count = log(norm_count)
   )
 
-# Save this to use for maxent analysis
-write_csv(raising_candidates, 'corpora/raising_candidates.csv')
+# write.csv(maxent_data, 'corpora/full_data_maxent.csv')
+
+# For analysis below, keep only tokens that could undergo raising
+raising_candidates <- maxent_data %>%
+  filter(raising_candidate) 
 
 # Find BF and FB forms that undergo raising
 opaque_raisers <- raising_candidates %>%
@@ -177,6 +181,14 @@ opaque_raisers %>%
   group_by(root) %>% 
   count()
 
+# Get number of roots that vacillate
+opaque_raisers %>% 
+  filter(last_two == 'BF') %>% 
+  group_by(root) %>% 
+  summarise(front_sum = sum(front_count),
+            back_sum = sum(back_count)) %>%
+  filter(front_sum > 0 & back_sum > 0)
+
 # Test for significance
 
 # Chi squared tests for whether raised FF/BF and BB/FB roots behave
@@ -194,49 +206,6 @@ chi_data_f <- full_data %>%
 chisq.test(table(chi_data_b$last_two, chi_data_b$back_count))
 chisq.test(table(chi_data_f$last_two, chi_data_f$back_count))
 
-## Code for a frequentist analysis
-full_model <- glmer(
-  opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + 
-    root_suffix_distance + has_name + has_ane + has_che + (1|root) + (1|source/author),
-  data=opaque_raisers,
-  family="binomial",
-  # The bobyqa optimizer has more luck converging than the default Nelder_Mead
-  control=glmerControl(optimizer = 'bobyqa')
-)
-
-# Test goodness of fit using DHARMa
-dharma_resids <- simulateResiduals(full_model)
-
-# Test for uniformity
-# This comes back as significant but it's because the data set is so large.
-# Looking at the residuals, the fit seems pretty good.
-uniformity_test <- testUniformity(dharma_resids)
-
-# Test for dispersion
-dispersion_test <- testDispersion(dharma_resids)
-
-# Bootstrapped outlier test because we're using binomial model
-outliers_test <- testOutliers(dharma_resids, type='bootstrap')
-
-# Plot residuals
-plotResiduals(dharma_resids, quantreg = T)
-
-# Test significance of fixed effects using LRT
-# drop1(full_model, test='Chisq', trace=TRUE)
-#
-# # Same for random effects
-# no_word <- glmer(opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|author),
-#                  data=opaque_raisers,
-#                  family="binomial",
-#                  control=glmerControl(optimizer = 'bobyqa'))
-# anova(full_model, no_word, test='Chisq')
-#
-# no_author <- glmer(opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|root),
-#                    data=opaque_raisers,
-#                    family="binomial",
-#                    control=glmerControl(optimizer = 'bobyqa'))
-# anova(full_model, no_author, test='Chisq')
-
 # Code for a Bayesian analysis
 full_model_brm <- brm(
   opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|root) + (1|source/author),
@@ -246,7 +215,10 @@ full_model_brm <- brm(
   iter = 6000,
   control = list(adapt_delta=0.999)
 )
-saveRDS(full_model_brm, 'brms_model2.test')
+# Save model so we don't have to train it again :p
+saveRDS(full_model_brm, 'brms_model.rds')
+
+# Run residual diagnostics using DHARMa
 model.check <- createDHARMa(
   simulatedResponse = t(posterior_predict(full_model_brm)),
   observedResponse = opaque_raisers$opaque,
@@ -258,6 +230,7 @@ plot(model.check)
 testOutliers(model.check)
 testDispersion(model.check)
 testUniformity(model.check)
+testZeroInflation(model.check)
 
 # Plot posterior samples
 posterior <- as.matrix(full_model_brm)

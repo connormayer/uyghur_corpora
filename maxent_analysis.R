@@ -1,12 +1,15 @@
 library(tidyverse)
 library(archive)
-# library(devtools)
-# install_github("connormayer/maxent.ot")
-library(maxent.ot)
+if (!require(maxent.ot)) {
+  library(devtools)
+  install_github("connormayer/maxent.ot")
+  library(maxent.ot)
+}
 library(lme4)
-options(dplyr.summarise.inform = FALSE)
 library(doParallel)
 library(foreach)
+
+options(dplyr.summarise.inform = FALSE)
 
 # Set up parallel environment
 n.cores <- parallel::detectCores() - 1
@@ -16,7 +19,6 @@ doParallel::registerDoParallel(cl = my.cluster)
 # If you want to run this script yourself, you'll need
 # to set the working directory to wherever you've checked out the corpora
 setwd("E:/git_repos/uyghur_corpora")
-# setwd("C:/Users/conno/git_repos/uyghur_corpora")
 
 ############################
 # LOAD AND PREPROCESS DATA #
@@ -212,18 +214,22 @@ create_partitions <- function(data, k, model_details) {
         dplyr::summarize(n = sum(back_count + front_count),
                          percent_back = sum(back_count) / n)
       
-      # Train simple logistic regression model to calculate P(hc|x). We're using
-      # proportions weighted by count rather than individual tokens to speed things
-      # up, because we need to train this model quite a few times.
-      lexical_model <- glm(
-        percent_back ~ last_one * log_norm_count * raised_form_prop + has_name + has_ane + has_che,
+      # Train a mixed-effects logistic regression model to calculate P(hc=B|x). 
+      # We're using proportions weighted by count rather than individual tokens 
+      # to speed things up, because we need to train this model quite a few times.
+      lexical_model <- lme4::glmer(
+        percent_back ~ last_one * log_norm_count * raised_form_prop + has_name + has_ane + has_che + (1|root),
         data=training_for_regression,
         family="binomial",
-        weights=training_for_regression$n
+        weights=training_for_regression$n,
+        control=lme4::glmerControl(optimizer = 'bobyqa')
       )
       # Apply model to predict data
-      training$p_hc_b <- predict(lexical_model, newdata=training, type='response')
-      test$p_hc_b <- predict(lexical_model, newdata=test, type='response')
+      training$p_hc_b <- predict(
+        lexical_model, newdata=training, type='response')
+      test$p_hc_b <- predict(
+        lexical_model, newdata=test, type='response', allow.new.levels = TRUE
+      )
     }
     
     # Create training tableau
@@ -292,13 +298,13 @@ do_cross_validation <- function(k, model_name, model_folder, mus, sigmas) {
 }
 
 sigmas_to_try <- c(
-  0.5, 0.2, 0.1, 0.05, 0.02, 0.01, 0.001
+  1, 10, 20, 50, 100, 200, 500
 )
 mus_to_try <- rep(0, length(sigmas_to_try))
 k <- 10
 
 # Set this to TRUE and change the seed to produce new partitions
-CREATE_FILES <- FALSE
+CREATE_FILES <- TRUE
 
 if (CREATE_FILES) {
   # Set seed for reproducibility
@@ -319,47 +325,90 @@ if (CREATE_FILES) {
     c("input_surface", "VAgreeSurface", "VAgreeUnderlying"),
     c("lexical", "HarmonicUniformity"),
     c("lexical_surface", "VAgreeSurface", "HarmonicUniformity"),
-    c("lexical_input_surface", "VAgreeSurface", "VAgreeUnderlying", 
-      "HarmonicUniformity")
+    c("lexical_input_surface", "VAgreeSurface", "VAgreeUnderlying",
+     "HarmonicUniformity")
   )
   create_partitions(randomized_data, k, model_details)
 }
 
 # Fit surface-true model
-surface_m <- do_cross_validation(
-  k, 'surface', 'maxent_data/surface', mus_to_try, sigmas_to_try
-)
-print(surface_m)
+# surface_m <- do_cross_validation(
+#   k, 'surface', 'maxent_data/surface', mus_to_try, sigmas_to_try
+# )
+# print(surface_m)
 
 # Fit input-oriented model
-input_m <- do_cross_validation(
-  k, 'input', 'maxent_data/input', mus_to_try, sigmas_to_try
-)
-print(input_m)
+# input_m <- do_cross_validation(
+#   k, 'input', 'maxent_data/input', mus_to_try, sigmas_to_try
+# )
+# print(input_m)
 
 # Fit input-surface-model
-input_surface_m <- do_cross_validation(
-  k, 'input_surface', 'maxent_data/input_surface', mus_to_try, sigmas_to_try
-)
-print(input_surface_m)
+# input_surface_m <- do_cross_validation(
+#   k, 'input_surface', 'maxent_data/input_surface', mus_to_try, sigmas_to_try
+# )
+# print(input_surface_m)
 
 # Fit lexical model
-lexical_m <- do_cross_validation(
-  k, 'lexical', 'maxent_data/lexical', mus_to_try, sigmas_to_try
+# lexical_m <- do_cross_validation(
+#   k, 'lexical', 'maxent_data/lexical', mus_to_try, sigmas_to_try
+# )
+# print(lexical_m)
+
+# Fit lexical model
+lexical_m_me <- do_cross_validation(
+  k, 'lexical_me', 'maxent_data/lexical_me', mus_to_try, sigmas_to_try
 )
-print(lexical_m)
+print(lexical_m_me)
+
+# # Fit lexical-surface model
+# lexical_surface_m <- do_cross_validation(
+#   k, 'lexical_surface', 'maxent_data/lexical_surface', mus_to_try, sigmas_to_try
+# )
+# print(lexical_surface_m)
 
 # Fit lexical-surface model
-lexical_surface_m <- do_cross_validation(
-  k, 'lexical_surface', 'maxent_data/lexical_surface', mus_to_try, sigmas_to_try
+lexical_surface_m_me <- do_cross_validation(
+  k, 'lexical_surface_me', 'maxent_data/lexical_surface_me', mus_to_try, sigmas_to_try
 )
-print(lexical_surface_m)
+print(lexical_surface_m_me)
 
 # Fit lexical-input-surface model
-lexical_input_surface_m <- do_cross_validation(
-  k, 'lexical_input_surface', 'maxent_data/lexical_input_surface', mus_to_try,
+# lexical_input_surface_m <- do_cross_validation(
+#   k, 'lexical_input_surface', 'maxent_data/lexical_input_surface', mus_to_try,
+#   sigmas_to_try
+# )
+# print(lexical_input_surface_m)
+
+lexical_input_surface_m_me <- do_cross_validation(
+  k, 'lexical_input_surface_me', 'maxent_data/lexical_input_surface_me', mus_to_try,
   sigmas_to_try
 )
-print(lexical_input_surface_m)
+print(lexical_input_surface_m_me)
 
 parallel::stopCluster(cl = my.cluster)
+
+# Fit model to full data set to get parameters and generalization cases
+root_agg <- maxent_data |>
+  group_by(
+    root, log_norm_count, raised_form_prop, last_two, last_two_distance, last_one,
+    has_name, has_ane, has_che
+  ) |>
+  summarize(n = sum(back_count + front_count),
+                   percent_back = sum(back_count) / n)
+
+lexical_model <- glmer(
+  percent_back ~ last_one * log_norm_count * raised_form_prop + has_name + has_ane + has_che + (1|root),
+  data=root_agg,
+  family="binomial",
+  weights=root_agg$n,
+  control=glmerControl(optimizer = 'bobyqa')
+)
+
+# Generalize to B-final root seen once
+wug_words <- tribble(
+  ~root, ~last_one, ~log_norm_count, ~raised_form_prop, ~has_name, ~has_ane, ~has_che,
+  "front_no_raised", "B", 0, 0, FALSE, FALSE, FALSE
+)
+
+predict(lexical_model, wug_words, type="response", allow.new.levels = TRUE)
