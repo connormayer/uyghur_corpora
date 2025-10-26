@@ -5,6 +5,7 @@ require(tidyverse)
 library(brms)
 library(bayesplot)
 library(DHARMa)
+library(viridis)
 
 # Load in our data. If you want to run this script yourself, you'll need
 # to set the working directory to wherever you've checked out the corpora
@@ -157,9 +158,21 @@ maxent_data <- full_data %>%
 raising_candidates <- maxent_data %>%
   filter(raising_candidate) 
 
+raisers <- raising_candidates %>%
+  filter(raised)
+
+raisers %>% 
+  filter(last_two == 'BB') %>% 
+  group_by(root) %>% 
+  count()
+
+raisers %>% 
+  filter(last_two == 'FF') %>% 
+  group_by(root) %>% 
+  count()
+
 # Find BF and FB forms that undergo raising
-opaque_raisers <- raising_candidates %>%
-  filter(raised) %>%
+opaque_raisers <- raisers %>%
   filter(last_two %in% c('BF', 'FB')) %>%
   mutate(
     opaque = case_when(back_count > 0 & last_two == 'FB' ~ 1,
@@ -169,17 +182,6 @@ opaque_raisers <- raising_candidates %>%
 
 # Get number of possible raising roots
 opaque_raisers %>% group_by(root) %>% count()
-
-# Get number of roots in each harmony class
-opaque_raisers %>% 
-  filter(last_two == 'BF') %>% 
-  group_by(root) %>% 
-  count()
-
-opaque_raisers %>% 
-  filter(last_two == 'FB') %>% 
-  group_by(root) %>% 
-  count()
 
 # Get number of roots that vacillate
 opaque_raisers %>% 
@@ -263,24 +265,30 @@ mcmc_areas(
   ) 
 
 # GRAPHS
-graph_data <- opaque_raisers %>% 
+graph_data <- raisers %>%
   group_by(last_two, back_count) %>%
   count()
+
+windowsFonts(Times = windowsFont("Times New Roman"))
 
 # Break down opacity rates by template
 ggplot(data=graph_data, aes(x=fct_relevel(last_two, c('FF', 'BF', 'FB', 'BB')), y=n, fill=factor(back_count))) +
   geom_col(position = 'fill') +
-  geom_text(size=6, aes(label=paste("n = ",n)), position=position_fill(vjust=0.5)) +
-  theme(axis.text.x = element_text(angle = -60, hjust = 0, size=20),
-        axis.text.y = element_text(size=20),
-        axis.title.x = element_text(size=25),
-        axis.title.y = element_text(size=25),
+  geom_text(size=9, aes(label=paste("n = ",n)), 
+            position=position_fill(vjust=0.5),
+            family="Times") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(angle = -60, hjust = 0, size=25),
+        axis.text.y = element_text(size=25),
+        axis.title.x = element_text(size=30),
+        axis.title.y = element_text(size=30),
         legend.title = element_blank(),
-        legend.text=element_text(size=20)) +
+        legend.text=element_text(size=25),
+        text = element_text(family = "Times")) +
   xlab("Underlying root template") +
   ylab("Proportion of tokens")  +
-  scale_fill_discrete(labels=c("Front suffix", "Back suffix"))
-ggsave("figures/full_harmonic_raisers.png")
+  scale_fill_viridis_d(labels=c("Front suffix", "Back suffix"), begin=0.3)
+ggsave("figures/full_harmonic_raisers.pdf", height=8, width=12, units="in")
 
 suffix_agg <- opaque_raisers %>%
   mutate(suffix = case_when(has_ane ~ '-ane',
@@ -293,17 +301,21 @@ suffix_agg <- opaque_raisers %>%
 
 ggplot(suffix_agg, aes(x=fct_relevel(suffix, levels=c('-che', '-ane', '-name', 'other BF')), y=n, fill=factor(back_count))) +
   geom_col(position = 'fill') +
-  geom_text(size=5, aes(label=paste("n = ",n)), position=position_fill(vjust=0.5)) +
-  theme(axis.text.x = element_text(size=20),
-        axis.text.y = element_text(size=20),
-        axis.title.x = element_text(size=25),
-        axis.title.y = element_text(size=25),
+  geom_text(size=9, aes(label=paste("n = ",n)), 
+            position=position_fill(vjust=0.5),
+            family="Times") +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(size=25),
+        axis.text.y = element_text(size=25),
+        axis.title.x = element_text(size=30),
+        axis.title.y = element_text(size=30),
         legend.title = element_blank(),
-        legend.text=element_text(size=20)) +
+        legend.text=element_text(size=25),
+        text = element_text(family = "Times")) +
   xlab("Suffix identity") +
   ylab("Proportion of tokens")  +
-  scale_fill_discrete(labels=c("Front suffix", "Back suffix"))
-ggsave("figures/suffix_raising.png")
+  scale_fill_viridis_d(labels=c("Front suffix", "Back suffix"), begin=0.3)
+ggsave("figures/suffix_raising.pdf", height=10, width=12, units="in")
 
 # Histograms
 # Aggregate rate of opacity by root
@@ -320,35 +332,17 @@ root_agg %>%
   geom_histogram(aes(back_rate), binwidth=0.025) +
   xlab("Proportion of back responses") +
   ylab("Root type count") +
-  theme(axis.text.x = element_text(size=20),
-        axis.text.y = element_text(size=20),
-        axis.title.x = element_text(size=25),
-        axis.title.y = element_text(size=25),
+  theme_minimal() + 
+  theme(axis.text.x = element_text(size=25),
+        axis.text.y = element_text(size=25),
+        axis.title.x = element_text(size=30),
+        axis.title.y = element_text(size=30),
+        legend.title = element_blank(),
+        legend.text=element_text(size=25),
+        text = element_text(family = "Times"),
         strip.text.x = element_text(size = 25)) +
   facet_wrap(~ last_two, scales="free_y")
 
-ggsave('figures/root_histogram.png')
+ggsave('figures/root_histogram.pdf', height=6, width=12, units="in")
 
-froot_agg %>%
-  filter(last_two == 'BF') %>%
-ggplot() +
-  geom_histogram(aes(opaque_rate), binwidth=0.025) +
-  xlab("Proportion of opaque responses for BF roots") +
-  ylab("Root type count") +
-  theme(axis.text.x = element_text(hjust = 0, size=20),
-        axis.text.y = element_text(size=20),
-        axis.title.x = element_text(size=25),
-        axis.title.y = element_text(size=25))
-ggsave('figures/bf_histogram.png')
 
-root_agg %>%
-  filter(last_two == 'FB') %>%
-  ggplot() +
-  geom_histogram(aes(opaque_rate), binwidth=0.025) +
-  xlab("Proportion of opaque responses for FB roots") +
-  ylab("Root type count") +
-  theme(axis.text.x = element_text(hjust = 0, size=20),
-        axis.text.y = element_text(size=20),
-        axis.title.x = element_text(size=25),
-        axis.title.y = element_text(size=25))
-ggsave('figures/fb_histogram.png')
