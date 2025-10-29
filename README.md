@@ -1,6 +1,8 @@
-# uyghur_corpora
+# A large-scale corpus study of phonological opacity in Uyghur
 
-This contains the code for "A large-scale corpus study of phonological opacity in Uyghur" by Connor Mayer, which will be published in *Phonology*.
+This contains the code and data used in 
+
+> Mayer, C. (in press). A large-scale corpus study of phonological opacity in Uyghur. *Phonology*.
 
 * The `corpora` folder contains each of the corpora. The `XX_documents.zip` file in each directory contains the raw text of every article, and the `metadata.csv` file contains the listing of articles and corresponding metadata. The `output` folder in each directory contains the output of the `apertium` transducer run on each corpus. The `raising_candidates.zip` file is a subset of the parses in each corpus that contains all the BB, FB, BF, and BB root tokens that can potentially undergo raising and include at least one harmonizing suffix. The `full_data_maxent`.zip` file is all the BB, FB, BF, and BB root tokens with harmonizing suffixes, regardless of whether they undergo raising. The corpora and parses are stored in zip files for space and efficiency reasons. The scripts that operate on this data automatically zip/unzip them.
   
@@ -15,6 +17,6 @@ This contains the code for "A large-scale corpus study of phonological opacity i
 * The `maxent_analysis.R` script converts corpus data into tableaux format and then fits MaxEnt models.
 
 The webscrapers used to produce the corpora can be found below:
-* [RFA scraper](https://anonymous.4open.science/r/RFA-Scraper-5841)
-* [Uyghur Awazi scraper](https://anonymous.4open.science/r/uyghur_tools-E388)
-* [Uyghur akadémiyisi scraper](https://anonymous.4open.science/status/UyghurAcademyWebsiteSpider-UG-70D7)
+* [RFA scraper](https://github.com/connormayer/RFA-Scraper)
+* [Uyghur Awazi scraper](https://github.com/connormayer/uyghur_tools/tree/master/uyghur_awazi_scraper)
+* [Uyghur akadémiyisi scraper](https://github.com/rgandhasri87/UyghurAcademyWebsiteSpider-EN)

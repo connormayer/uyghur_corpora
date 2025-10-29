@@ -7,10 +7,6 @@ library(bayesplot)
 library(DHARMa)
 library(viridis)
 
-# Load in our data. If you want to run this script yourself, you'll need
-# to set the working directory to wherever you've checked out the corpora
-setwd("E:/git_repos/uyghur_corpora")
-
 # We store the parses in zip files to save space
 rfa_file <- archive_read("corpora/rfa/output/conservative_parses.zip")
 rfa_data <- read_csv(rfa_file, col_types = cols())
@@ -185,7 +181,6 @@ opaque_raisers %>% group_by(root) %>% count()
 
 # Get number of roots that vacillate
 opaque_raisers %>% 
-  filter(last_two == 'BF') %>% 
   group_by(root) %>% 
   summarise(front_sum = sum(front_count),
             back_sum = sum(back_count)) %>%
@@ -208,17 +203,19 @@ chi_data_f <- full_data %>%
 chisq.test(table(chi_data_b$last_two, chi_data_b$back_count))
 chisq.test(table(chi_data_f$last_two, chi_data_f$back_count))
 
-# Code for a Bayesian analysis
-full_model_brm <- brm(
-  opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|root) + (1|source/author),
-  data=opaque_raisers,
-  family="bernoulli",
-  cores = 4,
-  iter = 6000,
-  control = list(adapt_delta=0.999)
-)
-# Save model so we don't have to train it again :p
-saveRDS(full_model_brm, 'brms_model.rds')
+# # Code for a Bayesian analysis
+# full_model_brm <- brm(
+#   opaque ~ log_norm_count + raised_form_prop + last_two + last_two_distance + root_suffix_distance + has_name + has_ane + has_che + (1|root) + (1|source/author),
+#   data=opaque_raisers,
+#   family="bernoulli",
+#   cores = 4,
+#   iter = 6000,
+#   control = list(adapt_delta=0.999)
+# )
+# # Save model so we don't have to train it again :p
+# saveRDS(full_model_brm, 'brms_model.rds')
+
+full_model_brm <- readRDS('brms_model.rds')
 
 # Run residual diagnostics using DHARMa
 model.check <- createDHARMa(
@@ -228,7 +225,39 @@ model.check <- createDHARMa(
   integerResponse = TRUE
 )
 
+windowsFonts(Times = windowsFont("Times New Roman"))
+
 plot(model.check)
+
+ggplot(data.frame(residuals = sort(model.check$scaledResiduals)), aes(sample = residuals)) +
+  stat_qq(distribution = qunif) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  labs(title = "QQ Plot of Uniform Residuals",
+       x = "Expected",
+       y = "Observed") +
+  theme_minimal()
+
+ggplot(data.frame(predicted = model.check$fittedPredictedResponse, residuals = model.check$scaledResiduals),
+       aes(x = predicted, y = residuals)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "loess", se = FALSE, color = "blue") +
+  labs(title = "Residuals vs. Predicted Values",
+       x = "Predicted Values",
+       y = "Scaled Residuals") +
+  theme_minimal()
+
+ggplot(data.frame(predicted = model.check$fittedPredictedResponse, residuals = model.check$scaledResiduals), aes(x = predicted, y = residuals)) +
+  geom_point(alpha = 0.5) + # Add points with some transparency
+  geom_hline(yintercept = 0.5, linetype = "dashed", color = "red") + # Expected mean
+  geom_smooth(method = "loess", se = FALSE, color = "blue") + # Add a smoother
+  labs(
+    title = "DHARMa Scaled Residuals vs. Predicted Values",
+    x = "Predicted Values",
+    y = "Scaled Residuals (0-1)"
+  ) +
+  theme_minimal()
+
+
 testOutliers(model.check)
 testDispersion(model.check)
 testUniformity(model.check)
@@ -248,8 +277,17 @@ mcmc_areas(
             "b_has_aneTRUE",
             "b_has_cheTRUE"),
    area_method = "equal height",
-   prob=0.95
-  ) + 
+   prob=0.95,
+   point_est = "mean"
+  ) +
+  theme_minimal() + 
+  theme(axis.text.x = element_text(size=25),
+        axis.text.y = element_text(size=25),
+        axis.title.x = element_text(size=30),
+        axis.title.y = element_text(size=30),
+        legend.title = element_blank(),
+        legend.text=element_text(size=25),
+        text = element_text(family = "Times")) +
   scale_y_discrete(
     labels = c(
        "b_Intercept" = "Intercept",
@@ -263,13 +301,12 @@ mcmc_areas(
        "b_has_cheTRUE" = "Has -che"
     ) 
   ) 
+ggsave("figures/bayesian_plot.pdf", height=8, width=12, units="in")
 
 # GRAPHS
 graph_data <- raisers %>%
   group_by(last_two, back_count) %>%
   count()
-
-windowsFonts(Times = windowsFont("Times New Roman"))
 
 # Break down opacity rates by template
 ggplot(data=graph_data, aes(x=fct_relevel(last_two, c('FF', 'BF', 'FB', 'BB')), y=n, fill=factor(back_count))) +
@@ -278,7 +315,7 @@ ggplot(data=graph_data, aes(x=fct_relevel(last_two, c('FF', 'BF', 'FB', 'BB')), 
             position=position_fill(vjust=0.5),
             family="Times") +
   theme_minimal() + 
-  theme(axis.text.x = element_text(angle = -60, hjust = 0, size=25),
+  theme(axis.text.x = element_text(size=25),
         axis.text.y = element_text(size=25),
         axis.title.x = element_text(size=30),
         axis.title.y = element_text(size=30),
@@ -287,7 +324,7 @@ ggplot(data=graph_data, aes(x=fct_relevel(last_two, c('FF', 'BF', 'FB', 'BB')), 
         text = element_text(family = "Times")) +
   xlab("Underlying root template") +
   ylab("Proportion of tokens")  +
-  scale_fill_viridis_d(labels=c("Front suffix", "Back suffix"), begin=0.3)
+  scale_fill_viridis_d(labels=c("Front suffix", "Back suffix"), begin=0.6)
 ggsave("figures/full_harmonic_raisers.pdf", height=8, width=12, units="in")
 
 suffix_agg <- opaque_raisers %>%
@@ -314,7 +351,7 @@ ggplot(suffix_agg, aes(x=fct_relevel(suffix, levels=c('-che', '-ane', '-name', '
         text = element_text(family = "Times")) +
   xlab("Suffix identity") +
   ylab("Proportion of tokens")  +
-  scale_fill_viridis_d(labels=c("Front suffix", "Back suffix"), begin=0.3)
+  scale_fill_viridis_d(labels=c("Front suffix", "Back suffix"), begin=0.6)
 ggsave("figures/suffix_raising.pdf", height=10, width=12, units="in")
 
 # Histograms

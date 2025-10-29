@@ -16,10 +16,6 @@ n.cores <- parallel::detectCores() - 1
 my.cluster <- parallel::makeCluster(n.cores, type="PSOCK")
 doParallel::registerDoParallel(cl = my.cluster)
 
-# If you want to run this script yourself, you'll need
-# to set the working directory to wherever you've checked out the corpora
-setwd("E:/git_repos/uyghur_corpora")
-
 ############################
 # LOAD AND PREPROCESS DATA #
 ############################
